@@ -467,9 +467,25 @@ func (at *AutoTrader) buildTradingContext() (*decision.Context, error) {
 		})
 	}
 
-	// 清理已平仓的持仓记录
+	// 清理已平仓的持仓记录，并撤销孤儿委托单
 	for key := range at.positionFirstSeenTime {
 		if !currentPositionKeys[key] {
+			// 倉位消失了（可能被止損/止盈觸發，或被強平）
+			// 提取幣種名稱（key 格式：BTCUSDT_long 或 SOLUSDT_short）
+			parts := strings.Split(key, "_")
+			if len(parts) == 2 {
+				symbol := parts[0]
+				side := parts[1]
+				log.Printf("⚠️ 檢測到倉位消失: %s %s → 自動撤銷委託單", symbol, side)
+
+				// 撤銷該幣種的所有委託單（清理孤兒止損/止盈單）
+				if err := at.trader.CancelAllOrders(symbol); err != nil {
+					log.Printf("  ⚠️ 撤銷 %s 委託單失敗: %v", symbol, err)
+				} else {
+					log.Printf("  ✓ 已撤銷 %s 的所有委託單", symbol)
+				}
+			}
+
 			delete(at.positionFirstSeenTime, key)
 		}
 	}
