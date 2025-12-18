@@ -183,6 +183,7 @@ func GetWithTimeframes(symbol string, timeframes []string, primaryTimeframe stri
 	currentEMA20 := calculateEMA(primaryKlines, 20)
 	currentMACD := calculateMACD(primaryKlines)
 	currentRSI7 := calculateRSI(primaryKlines, 7)
+	currentSMA20 := calculateSMA(primaryKlines, 20) // Demo: SMA 20-period
 
 	// Calculate price changes
 	priceChange1h := calculatePriceChangeByBars(primaryKlines, primaryTimeframe, 60) // 1 hour
@@ -205,6 +206,7 @@ func GetWithTimeframes(symbol string, timeframes []string, primaryTimeframe stri
 		CurrentEMA20:  currentEMA20,
 		CurrentMACD:   currentMACD,
 		CurrentRSI7:   currentRSI7,
+		CurrentSMA20:  currentSMA20, // Demo: SMA 20-period
 		OpenInterest:  oiData,
 		FundingRate:   fundingRate,
 		TimeframeData: timeframeData,
@@ -226,6 +228,7 @@ func calculateTimeframeSeries(klines []Kline, timeframe string, count int) *Time
 		MACDValues:  make([]float64, 0, count),
 		RSI7Values:  make([]float64, 0, count),
 		RSI14Values: make([]float64, 0, count),
+		SMA20Values: make([]float64, 0, count), // Demo: SMA 20 series
 		Volume:      make([]float64, 0, count),
 	}
 
@@ -350,6 +353,22 @@ func parseTimeframeToMinutes(tf string) int {
 	default:
 		return 0
 	}
+}
+
+// calculateSMA calculates Simple Moving Average
+func calculateSMA(klines []Kline, period int) float64 {
+	if len(klines) < period {
+		return 0
+	}
+
+	// Calculate SMA: sum of last N closes / N
+	sum := 0.0
+	startIdx := len(klines) - period
+	for i := startIdx; i < len(klines); i++ {
+		sum += klines[i].Close
+	}
+
+	return sum / float64(period)
 }
 
 // calculateEMA calculates EMA

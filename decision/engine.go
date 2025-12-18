@@ -1056,6 +1056,11 @@ func (e *StrategyEngine) formatMarketData(data *market.Data) string {
 		sb.WriteString(fmt.Sprintf(", current_rsi7 = %.3f", data.CurrentRSI7))
 	}
 
+	// Demo: SMA indicator formatting
+	if indicators.EnableSMA {
+		sb.WriteString(fmt.Sprintf(", current_sma20 = %.3f", data.CurrentSMA20))
+	}
+
 	sb.WriteString("\n\n")
 
 	if indicators.EnableOI || indicators.EnableFundingRate {
