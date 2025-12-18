@@ -1118,6 +1118,11 @@ func (e *StrategyEngine) formatMarketData(data *market.Data) string {
 			if indicators.EnableATR {
 				sb.WriteString(fmt.Sprintf("3m ATR (14-period): %.3f\n\n", data.IntradaySeries.ATR14))
 			}
+
+			// Demo: SMA indicator formatting
+			if indicators.EnableSMA && len(data.IntradaySeries.SMA20Values) > 0 {
+				sb.WriteString(fmt.Sprintf("SMA indicators (20-period): %s\n\n", formatFloatSlice(data.IntradaySeries.SMA20Values)))
+			}
 		}
 
 		if data.LongerTermContext != nil && indicators.Klines.EnableMultiTimeframe {
@@ -1196,6 +1201,13 @@ func (e *StrategyEngine) formatTimeframeSeriesData(sb *strings.Builder, data *ma
 
 	if indicators.EnableATR && data.ATR14 > 0 {
 		sb.WriteString(fmt.Sprintf("ATR14: %.4f\n", data.ATR14))
+	}
+
+	// Demo: SMA indicator formatting
+	if indicators.EnableSMA {
+		if len(data.SMA20Values) > 0 {
+			sb.WriteString(fmt.Sprintf("SMA20: %s\n", formatFloatSlice(data.SMA20Values)))
+		}
 	}
 
 	sb.WriteString("\n")

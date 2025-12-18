@@ -432,12 +432,14 @@ export interface IndicatorConfig {
   enable_macd: boolean;
   enable_rsi: boolean;
   enable_atr: boolean;
+  enable_sma?: boolean; // Demo: Simple Moving Average
   enable_volume: boolean;
   enable_oi: boolean;
   enable_funding_rate: boolean;
   ema_periods?: number[];
   rsi_periods?: number[];
   atr_periods?: number[];
+  sma_periods?: number[]; // Demo: SMA periods, default [20]
   external_data_sources?: ExternalDataSource[];
   // 量化数据源（资金流向、持仓变化、价格变化）
   enable_quant_data?: boolean;

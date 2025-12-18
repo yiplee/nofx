@@ -61,6 +61,7 @@ func Get(symbol string) (*Data, error) {
 	currentEMA20 := calculateEMA(klines3m, 20)
 	currentMACD := calculateMACD(klines3m)
 	currentRSI7 := calculateRSI(klines3m, 7)
+	currentSMA20 := calculateSMA(klines3m, 20) // Demo: SMA 20-period
 
 	// Calculate price change percentage
 	// 1-hour price change = price from 20 3-minute K-lines ago
@@ -105,6 +106,7 @@ func Get(symbol string) (*Data, error) {
 		CurrentEMA20:      currentEMA20,
 		CurrentMACD:       currentMACD,
 		CurrentRSI7:       currentRSI7,
+		CurrentSMA20:      currentSMA20, // Demo: SMA 20-period
 		OpenInterest:      oiData,
 		FundingRate:       fundingRate,
 		IntradaySeries:    intradayData,
@@ -493,6 +495,7 @@ func calculateIntradaySeries(klines []Kline) *IntradayData {
 		MACDValues:  make([]float64, 0, 10),
 		RSI7Values:  make([]float64, 0, 10),
 		RSI14Values: make([]float64, 0, 10),
+		SMA20Values: make([]float64, 0, 10), // Demo: SMA 20 series
 		Volume:      make([]float64, 0, 10),
 	}
 
@@ -526,6 +529,12 @@ func calculateIntradaySeries(klines []Kline) *IntradayData {
 		if i >= 14 {
 			rsi14 := calculateRSI(klines[:i+1], 14)
 			data.RSI14Values = append(data.RSI14Values, rsi14)
+		}
+
+		// Demo: Calculate SMA20 for each point
+		if i >= 19 {
+			sma20 := calculateSMA(klines[:i+1], 20)
+			data.SMA20Values = append(data.SMA20Values, sma20)
 		}
 	}
 
@@ -888,6 +897,7 @@ func BuildDataFromKlines(symbol string, primary []Kline, longer []Kline) (*Data,
 		CurrentEMA20:      calculateEMA(primary, 20),
 		CurrentMACD:       calculateMACD(primary),
 		CurrentRSI7:       calculateRSI(primary, 7),
+		CurrentSMA20:     calculateSMA(primary, 20), // Demo: SMA 20-period
 		PriceChange1h:     priceChangeFromSeries(primary, time.Hour),
 		PriceChange4h:     priceChangeFromSeries(primary, 4*time.Hour),
 		OpenInterest:      &OIData{Latest: 0, Average: 0},

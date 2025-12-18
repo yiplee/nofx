@@ -58,6 +58,7 @@ type IntradayData struct {
 	MACDValues  []float64
 	RSI7Values  []float64
 	RSI14Values []float64
+	SMA20Values []float64 // Demo: SMA 20 series
 	Volume      []float64
 	ATR14       float64
 }
