@@ -29,9 +29,9 @@ type AutoTraderConfig struct {
 	BinanceAPIKey    string
 	BinanceSecretKey string
 
-	// Binance trailing take profit configuration
-	BinanceUseTrailingTakeProfit bool   // Whether to use trailing take profit instead of market take profit
-	BinanceTrailingCallbackRate   float64 // Trailing callback rate percentage (default 1%)
+	// Trailing take profit configuration (supported by Binance and potentially other exchanges)
+	UseTrailingTakeProfit bool    // Whether to use trailing take profit instead of market take profit
+	TrailingCallbackRate  float64 // Trailing callback rate percentage (default 1%)
 
 	// Bybit API configuration
 	BybitAPIKey    string
@@ -227,8 +227,8 @@ func NewAutoTrader(config AutoTraderConfig, st *store.Store, userID string) (*Au
 		logger.Infof("🏦 [%s] Using Binance Futures trading", config.Name)
 		binanceTrader := NewFuturesTrader(config.BinanceAPIKey, config.BinanceSecretKey, userID)
 		// Configure trailing take profit if enabled
-		if config.BinanceUseTrailingTakeProfit {
-			callbackRate := config.BinanceTrailingCallbackRate
+		if config.UseTrailingTakeProfit {
+			callbackRate := config.TrailingCallbackRate
 			if callbackRate <= 0 {
 				callbackRate = 1.0 // Default to 1%
 			}

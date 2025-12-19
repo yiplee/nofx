@@ -567,6 +567,10 @@ export const translations = {
     ipCopied: 'IP Copied',
     copyIPFailed: 'Failed to copy IP address. Please copy manually',
     loadingServerIP: 'Loading server IP...',
+    useTrailingTakeProfit: 'Use Trailing Take Profit',
+    trailingTakeProfitTooltip: 'Enable trailing take profit instead of market take profit orders',
+    trailingCallbackRate: 'Trailing Callback Rate',
+    trailingCallbackRateTooltip: 'Percentage callback rate for trailing take profit (default: 1%)',
 
     // Error Messages
     createTraderFailed: 'Failed to create trader',
@@ -1692,6 +1696,10 @@ export const translations = {
     copyIP: '复制',
     ipCopied: 'IP已复制',
     copyIPFailed: 'IP地址复制失败，请手动复制',
+    useTrailingTakeProfit: '使用追踪止盈',
+    trailingTakeProfitTooltip: '启用追踪止盈，替代市价止盈订单',
+    trailingCallbackRate: '追踪回调率',
+    trailingCallbackRateTooltip: '追踪止盈的回调率百分比（默认：1%）',
     loadingServerIP: '正在加载服务器IP...',
 
     // Error Messages

@@ -135,6 +135,9 @@ export interface Exchange {
   lighterPrivateKey?: string
   lighterApiKeyPrivateKey?: string
   lighterApiKeyIndex?: number
+  // Trailing take profit (supported by Binance and potentially other exchanges)
+  useTrailingTakeProfit?: boolean
+  trailingCallbackRate?: number
 }
 
 export interface CreateExchangeRequest {
@@ -153,6 +156,8 @@ export interface CreateExchangeRequest {
   lighter_private_key?: string
   lighter_api_key_private_key?: string
   lighter_api_key_index?: number
+  use_trailing_take_profit?: boolean
+  trailing_callback_rate?: number
 }
 
 export interface CreateTraderRequest {
@@ -205,6 +210,9 @@ export interface UpdateExchangeConfigRequest {
       lighter_private_key?: string
       lighter_api_key_private_key?: string
       lighter_api_key_index?: number
+      // Trailing take profit (supported by Binance and potentially other exchanges)
+      use_trailing_take_profit?: boolean
+      trailing_callback_rate?: number
     }
   }
 }

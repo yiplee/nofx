@@ -45,7 +45,9 @@ interface ExchangeConfigModalProps {
     lighterWalletAddr?: string,
     lighterPrivateKey?: string,
     lighterApiKeyPrivateKey?: string,
-    lighterApiKeyIndex?: number
+    lighterApiKeyIndex?: number,
+    useTrailingTakeProfit?: boolean,
+    trailingCallbackRate?: number
   ) => Promise<void>
   onDelete: (exchangeId: string) => void
   onClose: () => void
@@ -91,6 +93,10 @@ export function ExchangeConfigModal({
   const [lighterWalletAddr, setLighterWalletAddr] = useState('')
   const [lighterApiKeyPrivateKey, setLighterApiKeyPrivateKey] = useState('')
   const [lighterApiKeyIndex, setLighterApiKeyIndex] = useState(0)
+
+  // Trailing take profit 配置（币安等交易所支持）
+  const [useTrailingTakeProfit, setUseTrailingTakeProfit] = useState(false)
+  const [trailingCallbackRate, setTrailingCallbackRate] = useState(1.0)
 
   // 安全输入状态
   const [secureInputTarget, setSecureInputTarget] = useState<
@@ -152,6 +158,10 @@ export function ExchangeConfigModal({
       setLighterWalletAddr(selectedExchange.lighterWalletAddr || '')
       setLighterApiKeyPrivateKey('') // Don't load existing API key for security
       setLighterApiKeyIndex(selectedExchange.lighterApiKeyIndex || 0)
+
+      // Trailing take profit 字段
+      setUseTrailingTakeProfit(selectedExchange.useTrailingTakeProfit || false)
+      setTrailingCallbackRate(selectedExchange.trailingCallbackRate || 1.0)
     }
   }, [editingExchangeId, selectedExchange])
 
@@ -281,7 +291,25 @@ export function ExchangeConfigModal({
       // 根据交易所类型验证不同字段
       if (currentExchangeType === 'binance') {
         if (!apiKey.trim() || !secretKey.trim()) return
-        await onSave(exchangeId, exchangeType, trimmedAccountName, apiKey.trim(), secretKey.trim(), '', testnet)
+        await onSave(
+          exchangeId,
+          exchangeType,
+          trimmedAccountName,
+          apiKey.trim(),
+          secretKey.trim(),
+          '',
+          testnet,
+          undefined, // hyperliquidWalletAddr
+          undefined, // asterUser
+          undefined, // asterSigner
+          undefined, // asterPrivateKey
+          undefined, // lighterWalletAddr
+          undefined, // lighterPrivateKey
+          undefined, // lighterApiKeyPrivateKey
+          undefined, // lighterApiKeyIndex
+          useTrailingTakeProfit,
+          trailingCallbackRate
+        )
       } else if (currentExchangeType === 'okx') {
         if (!apiKey.trim() || !secretKey.trim() || !passphrase.trim()) return
         await onSave(exchangeId, exchangeType, trimmedAccountName, apiKey.trim(), secretKey.trim(), passphrase.trim(), testnet)
@@ -768,6 +796,70 @@ export function ExchangeConfigModal({
                               </button>
                             </div>
                           ) : null}
+                        </div>
+                      )}
+
+                      {/* 追踪止盈配置（币安等交易所支持） */}
+                      {currentExchangeType === 'binance' && (
+                        <div className="space-y-3">
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="checkbox"
+                              id="trailing-tp"
+                              checked={useTrailingTakeProfit}
+                              onChange={(e) => setUseTrailingTakeProfit(e.target.checked)}
+                              className="w-4 h-4 rounded"
+                              style={{
+                                accentColor: '#F0B90B',
+                              }}
+                            />
+                            <label
+                              htmlFor="trailing-tp"
+                              className="text-sm"
+                              style={{ color: '#EAECEF' }}
+                            >
+                              {t('useTrailingTakeProfit', language)}
+                            </label>
+                            <Tooltip content={t('trailingTakeProfitTooltip', language)}>
+                              <HelpCircle className="w-4 h-4" style={{ color: '#848E9C' }} />
+                            </Tooltip>
+                          </div>
+                          {useTrailingTakeProfit && (
+                            <div>
+                              <label
+                                className="text-sm block mb-2"
+                                style={{ color: '#EAECEF' }}
+                              >
+                                {t('trailingCallbackRate', language)}
+                              </label>
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="number"
+                                  min="0.1"
+                                  max="5"
+                                  step="0.1"
+                                  value={trailingCallbackRate}
+                                  onChange={(e) =>
+                                    setTrailingCallbackRate(
+                                      parseFloat(e.target.value) || 1.0
+                                    )
+                                  }
+                                  className="w-24 px-3 py-2 rounded"
+                                  style={{
+                                    background: '#0B0E11',
+                                    border: '1px solid #2B3139',
+                                    color: '#EAECEF',
+                                  }}
+                                />
+                                <span className="text-sm" style={{ color: '#848E9C' }}>
+                                  %
+                                </span>
+                                <Tooltip content={t('trailingCallbackRateTooltip', language)}>
+                                  <HelpCircle className="w-4 h-4" style={{ color: '#848E9C' }} />
+                                </Tooltip>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       )}
                     </>

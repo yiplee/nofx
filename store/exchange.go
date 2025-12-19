@@ -38,6 +38,8 @@ type Exchange struct {
 	LighterPrivateKey       string    `json:"lighterPrivateKey"`
 	LighterAPIKeyPrivateKey string    `json:"lighterAPIKeyPrivateKey"`
 	LighterAPIKeyIndex      int       `json:"lighterAPIKeyIndex"`
+	UseTrailingTakeProfit   bool      `json:"useTrailingTakeProfit"` // Whether to use trailing take profit instead of market take profit
+	TrailingCallbackRate    float64   `json:"trailingCallbackRate"`  // Trailing callback rate percentage (default 1%)
 	CreatedAt               time.Time `json:"created_at"`
 	UpdatedAt               time.Time `json:"updated_at"`
 }
@@ -65,6 +67,8 @@ func (s *ExchangeStore) initTables() error {
 			lighter_private_key TEXT DEFAULT '',
 			lighter_api_key_private_key TEXT DEFAULT '',
 			lighter_api_key_index INTEGER DEFAULT 0,
+			use_trailing_take_profit BOOLEAN DEFAULT 0,
+			trailing_callback_rate REAL DEFAULT 1.0,
 			created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
 			updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 		)
@@ -78,6 +82,8 @@ func (s *ExchangeStore) initTables() error {
 	s.db.Exec(`ALTER TABLE exchanges ADD COLUMN exchange_type TEXT NOT NULL DEFAULT ''`)
 	s.db.Exec(`ALTER TABLE exchanges ADD COLUMN account_name TEXT NOT NULL DEFAULT ''`)
 	s.db.Exec(`ALTER TABLE exchanges ADD COLUMN lighter_api_key_index INTEGER DEFAULT 0`)
+	s.db.Exec(`ALTER TABLE exchanges ADD COLUMN use_trailing_take_profit BOOLEAN DEFAULT 0`)
+	s.db.Exec(`ALTER TABLE exchanges ADD COLUMN trailing_callback_rate REAL DEFAULT 1.0`)
 
 	// Run migration to multi-account if needed
 	if err := s.migrateToMultiAccount(); err != nil {
@@ -138,11 +144,11 @@ func (s *ExchangeStore) migrateToMultiAccount() error {
 	defer rows.Close()
 
 	type oldRecord struct {
-		id, userID, name, typ                                                                             string
-		enabled, testnet                                                                                  bool
-		apiKey, secretKey, passphrase                                                                     string
-		hyperliquidWalletAddr, asterUser, asterSigner, asterPrivateKey                                    string
-		lighterWalletAddr, lighterPrivateKey, lighterApiKeyPrivateKey                                     string
+		id, userID, name, typ                                          string
+		enabled, testnet                                               bool
+		apiKey, secretKey, passphrase                                  string
+		hyperliquidWalletAddr, asterUser, asterSigner, asterPrivateKey string
+		lighterWalletAddr, lighterPrivateKey, lighterApiKeyPrivateKey  string
 	}
 
 	var records []oldRecord
@@ -234,6 +240,8 @@ func (s *ExchangeStore) List(userID string) ([]*Exchange, error) {
 		       COALESCE(lighter_private_key, '') as lighter_private_key,
 		       COALESCE(lighter_api_key_private_key, '') as lighter_api_key_private_key,
 		       COALESCE(lighter_api_key_index, 0) as lighter_api_key_index,
+		       COALESCE(binance_use_trailing_take_profit, 0) as binance_use_trailing_take_profit,
+		       COALESCE(binance_trailing_callback_rate, 1.0) as binance_trailing_callback_rate,
 		       created_at, updated_at
 		FROM exchanges WHERE user_id = ? ORDER BY exchange_type, account_name
 	`, userID)
@@ -252,6 +260,7 @@ func (s *ExchangeStore) List(userID string) ([]*Exchange, error) {
 			&e.Enabled, &e.APIKey, &e.SecretKey, &e.Passphrase, &e.Testnet,
 			&e.HyperliquidWalletAddr, &e.AsterUser, &e.AsterSigner, &e.AsterPrivateKey,
 			&e.LighterWalletAddr, &e.LighterPrivateKey, &e.LighterAPIKeyPrivateKey, &e.LighterAPIKeyIndex,
+			&e.UseTrailingTakeProfit, &e.TrailingCallbackRate,
 			&createdAt, &updatedAt,
 		)
 		if err != nil {
@@ -286,6 +295,8 @@ func (s *ExchangeStore) GetByID(userID, id string) (*Exchange, error) {
 		       COALESCE(lighter_private_key, '') as lighter_private_key,
 		       COALESCE(lighter_api_key_private_key, '') as lighter_api_key_private_key,
 		       COALESCE(lighter_api_key_index, 0) as lighter_api_key_index,
+		       COALESCE(use_trailing_take_profit, 0) as use_trailing_take_profit,
+		       COALESCE(trailing_callback_rate, 1.0) as trailing_callback_rate,
 		       created_at, updated_at
 		FROM exchanges WHERE id = ? AND user_id = ?
 	`, id, userID).Scan(
@@ -294,6 +305,7 @@ func (s *ExchangeStore) GetByID(userID, id string) (*Exchange, error) {
 		&e.Enabled, &e.APIKey, &e.SecretKey, &e.Passphrase, &e.Testnet,
 		&e.HyperliquidWalletAddr, &e.AsterUser, &e.AsterSigner, &e.AsterPrivateKey,
 		&e.LighterWalletAddr, &e.LighterPrivateKey, &e.LighterAPIKeyPrivateKey, &e.LighterAPIKeyIndex,
+		&e.UseTrailingTakeProfit, &e.TrailingCallbackRate,
 		&createdAt, &updatedAt,
 	)
 	if err != nil {
@@ -336,7 +348,8 @@ func getExchangeNameAndType(exchangeType string) (name string, typ string) {
 func (s *ExchangeStore) Create(userID, exchangeType, accountName string, enabled bool,
 	apiKey, secretKey, passphrase string, testnet bool,
 	hyperliquidWalletAddr, asterUser, asterSigner, asterPrivateKey,
-	lighterWalletAddr, lighterPrivateKey, lighterApiKeyPrivateKey string, lighterApiKeyIndex int) (string, error) {
+	lighterWalletAddr, lighterPrivateKey, lighterApiKeyPrivateKey string, lighterApiKeyIndex int,
+	useTrailingTakeProfit bool, trailingCallbackRate float64) (string, error) {
 
 	id := uuid.New().String()
 	name, typ := getExchangeNameAndType(exchangeType)
@@ -354,12 +367,14 @@ func (s *ExchangeStore) Create(userID, exchangeType, accountName string, enabled
 		                       api_key, secret_key, passphrase, testnet,
 		                       hyperliquid_wallet_addr, aster_user, aster_signer, aster_private_key,
 		                       lighter_wallet_addr, lighter_private_key, lighter_api_key_private_key, lighter_api_key_index,
+		                       use_trailing_take_profit, trailing_callback_rate,
 		                       created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
 	`, id, exchangeType, accountName, userID, name, typ, enabled,
 		s.encrypt(apiKey), s.encrypt(secretKey), s.encrypt(passphrase), testnet,
 		hyperliquidWalletAddr, asterUser, asterSigner, s.encrypt(asterPrivateKey),
-		lighterWalletAddr, s.encrypt(lighterPrivateKey), s.encrypt(lighterApiKeyPrivateKey), lighterApiKeyIndex)
+		lighterWalletAddr, s.encrypt(lighterPrivateKey), s.encrypt(lighterApiKeyPrivateKey), lighterApiKeyIndex,
+		useTrailingTakeProfit, trailingCallbackRate)
 
 	if err != nil {
 		return "", err
@@ -369,7 +384,8 @@ func (s *ExchangeStore) Create(userID, exchangeType, accountName string, enabled
 
 // Update updates exchange configuration by UUID
 func (s *ExchangeStore) Update(userID, id string, enabled bool, apiKey, secretKey, passphrase string, testnet bool,
-	hyperliquidWalletAddr, asterUser, asterSigner, asterPrivateKey, lighterWalletAddr, lighterPrivateKey, lighterApiKeyPrivateKey string, lighterApiKeyIndex int) error {
+	hyperliquidWalletAddr, asterUser, asterSigner, asterPrivateKey, lighterWalletAddr, lighterPrivateKey, lighterApiKeyPrivateKey string, lighterApiKeyIndex int,
+	useTrailingTakeProfit bool, trailingCallbackRate float64) error {
 
 	logger.Debugf("🔧 ExchangeStore.Update: userID=%s, id=%s, enabled=%v", userID, id, enabled)
 
@@ -381,9 +397,12 @@ func (s *ExchangeStore) Update(userID, id string, enabled bool, apiKey, secretKe
 		"aster_signer = ?",
 		"lighter_wallet_addr = ?",
 		"lighter_api_key_index = ?",
+		"use_trailing_take_profit = ?",
+		"trailing_callback_rate = ?",
 		"updated_at = datetime('now')",
 	}
-	args := []interface{}{enabled, testnet, hyperliquidWalletAddr, asterUser, asterSigner, lighterWalletAddr, lighterApiKeyIndex}
+	args := []interface{}{enabled, testnet, hyperliquidWalletAddr, asterUser, asterSigner, lighterWalletAddr, lighterApiKeyIndex,
+		useTrailingTakeProfit, trailingCallbackRate}
 
 	if apiKey != "" {
 		setClauses = append(setClauses, "api_key = ?")
@@ -462,7 +481,7 @@ func (s *ExchangeStore) CreateLegacy(userID, id, name, typ string, enabled bool,
 	if id == "binance" || id == "bybit" || id == "okx" || id == "bitget" || id == "hyperliquid" || id == "aster" || id == "lighter" {
 		// Use new Create method with exchange type
 		_, err := s.Create(userID, id, "Default", enabled, apiKey, secretKey, "", testnet,
-			hyperliquidWalletAddr, asterUser, asterSigner, asterPrivateKey, "", "", "", 0)
+			hyperliquidWalletAddr, asterUser, asterSigner, asterPrivateKey, "", "", "", 0, false, 1.0)
 		return err
 	}
 
