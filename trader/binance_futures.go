@@ -59,6 +59,10 @@ type FuturesTrader struct {
 
 	// Cache validity period (15 seconds)
 	cacheDuration time.Duration
+
+	// Trailing take profit configuration
+	useTrailingTakeProfit bool   // Whether to use trailing take profit instead of market take profit
+	trailingCallbackRate  float64 // Trailing callback rate percentage (default 1%)
 }
 
 // NewFuturesTrader creates futures trader
@@ -73,8 +77,10 @@ func NewFuturesTrader(apiKey, secretKey string, userId string) *FuturesTrader {
 	// Sync time to avoid "Timestamp ahead" error
 	syncBinanceServerTime(client)
 	trader := &FuturesTrader{
-		client:        client,
-		cacheDuration: 15 * time.Second, // 15-second cache
+		client:                 client,
+		cacheDuration:          15 * time.Second, // 15-second cache
+		useTrailingTakeProfit: false,            // Default: use market take profit
+		trailingCallbackRate:  1.0,               // Default: 1% callback rate
 	}
 
 	// Set dual-side position mode (Hedge Mode)
@@ -837,8 +843,19 @@ func (t *FuturesTrader) SetStopLoss(symbol string, positionSide string, quantity
 	return nil
 }
 
+// SetTrailingTakeProfitConfig configures trailing take profit settings
+func (t *FuturesTrader) SetTrailingTakeProfitConfig(useTrailing bool, callbackRate float64) {
+	t.useTrailingTakeProfit = useTrailing
+	if callbackRate > 0 {
+		t.trailingCallbackRate = callbackRate
+	} else {
+		t.trailingCallbackRate = 1.0 // Default to 1%
+	}
+}
+
 // SetTakeProfit sets take-profit order using new Algo Order API
 // Binance has migrated stop orders to Algo Order system (error -4120 STOP_ORDER_SWITCH_ALGO)
+// If trailing take profit is enabled, uses trailing stop market order instead
 func (t *FuturesTrader) SetTakeProfit(symbol string, positionSide string, quantity, takeProfitPrice float64) error {
 	var side futures.SideType
 	var posSide futures.PositionSideType
@@ -851,7 +868,12 @@ func (t *FuturesTrader) SetTakeProfit(symbol string, positionSide string, quanti
 		posSide = futures.PositionSideTypeShort
 	}
 
-	// Use new Algo Order API
+	// Check if trailing take profit is enabled
+	if t.useTrailingTakeProfit {
+		return t.setTrailingTakeProfit(symbol, side, posSide, takeProfitPrice)
+	}
+
+	// Use new Algo Order API for regular take profit
 	_, err := t.client.NewCreateAlgoOrderService().
 		Symbol(symbol).
 		Side(side).
@@ -868,6 +890,33 @@ func (t *FuturesTrader) SetTakeProfit(symbol string, positionSide string, quanti
 	}
 
 	logger.Infof("  Take-profit price set (Algo Order): %.4f", takeProfitPrice)
+	return nil
+}
+
+// setTrailingTakeProfit sets trailing take-profit order using Algo Order API
+func (t *FuturesTrader) setTrailingTakeProfit(symbol string, side futures.SideType, posSide futures.PositionSideType, activationPrice float64) error {
+	// Format callback rate (Binance expects percentage as string, e.g., "1" for 1%)
+	callbackRateStr := fmt.Sprintf("%.1f", t.trailingCallbackRate)
+
+	// Use Algo Order API for trailing stop market order
+	// Note: When closePosition is true, quantity is not needed
+	_, err := t.client.NewCreateAlgoOrderService().
+		Symbol(symbol).
+		Side(side).
+		PositionSide(posSide).
+		Type(futures.AlgoOrderTypeTrailingStopMarket).
+		TriggerPrice(fmt.Sprintf("%.8f", activationPrice)).
+		CallbackRate(callbackRateStr).
+		WorkingType(futures.WorkingTypeContractPrice).
+		ClosePosition(true).
+		ClientAlgoId(getBrOrderID()).
+		Do(context.Background())
+
+	if err != nil {
+		return fmt.Errorf("failed to set trailing take-profit: %w", err)
+	}
+
+	logger.Infof("  Trailing take-profit set (Algo Order): activation price %.4f, callback rate %.2f%%", activationPrice, t.trailingCallbackRate)
 	return nil
 }
 
