@@ -240,8 +240,8 @@ func (s *ExchangeStore) List(userID string) ([]*Exchange, error) {
 		       COALESCE(lighter_private_key, '') as lighter_private_key,
 		       COALESCE(lighter_api_key_private_key, '') as lighter_api_key_private_key,
 		       COALESCE(lighter_api_key_index, 0) as lighter_api_key_index,
-		       COALESCE(binance_use_trailing_take_profit, 0) as binance_use_trailing_take_profit,
-		       COALESCE(binance_trailing_callback_rate, 1.0) as binance_trailing_callback_rate,
+		       COALESCE(use_trailing_take_profit, 0) as use_trailing_take_profit,
+		       COALESCE(trailing_callback_rate, 1.0) as trailing_callback_rate,
 		       created_at, updated_at
 		FROM exchanges WHERE user_id = ? ORDER BY exchange_type, account_name
 	`, userID)
