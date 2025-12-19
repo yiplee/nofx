@@ -290,7 +290,12 @@ export function ExchangeConfigModal({
     try {
       // 根据交易所类型验证不同字段
       if (currentExchangeType === 'binance') {
-        if (!apiKey.trim() || !secretKey.trim()) return
+        // 创建模式：必须输入 API Key 和 Secret Key
+        if (!editingExchangeId && (!apiKey.trim() || !secretKey.trim())) {
+          toast.error(language === 'zh' ? '请输入 API Key 和 Secret Key' : 'Please enter API Key and Secret Key')
+          return
+        }
+        // 编辑模式：允许空值，后端会保留原有值
         await onSave(
           exchangeId,
           exchangeType,
@@ -311,10 +316,20 @@ export function ExchangeConfigModal({
           trailingCallbackRate
         )
       } else if (currentExchangeType === 'okx') {
-        if (!apiKey.trim() || !secretKey.trim() || !passphrase.trim()) return
+        // 创建模式：必须输入所有字段
+        if (!editingExchangeId && (!apiKey.trim() || !secretKey.trim() || !passphrase.trim())) {
+          toast.error(language === 'zh' ? '请输入 API Key、Secret Key 和 Passphrase' : 'Please enter API Key, Secret Key and Passphrase')
+          return
+        }
+        // 编辑模式：允许空值，后端会保留原有值
         await onSave(exchangeId, exchangeType, trimmedAccountName, apiKey.trim(), secretKey.trim(), passphrase.trim(), testnet)
       } else if (currentExchangeType === 'bitget') {
-        if (!apiKey.trim() || !secretKey.trim() || !passphrase.trim()) return
+        // 创建模式：必须输入所有字段
+        if (!editingExchangeId && (!apiKey.trim() || !secretKey.trim() || !passphrase.trim())) {
+          toast.error(language === 'zh' ? '请输入 API Key、Secret Key 和 Passphrase' : 'Please enter API Key, Secret Key and Passphrase')
+          return
+        }
+        // 编辑模式：允许空值，后端会保留原有值
         await onSave(exchangeId, exchangeType, trimmedAccountName, apiKey.trim(), secretKey.trim(), passphrase.trim(), testnet)
       } else if (currentExchangeType === 'hyperliquid') {
         if (!apiKey.trim() || !hyperliquidWalletAddr.trim()) return // 验证私钥和钱包地址
@@ -365,7 +380,12 @@ export function ExchangeConfigModal({
         )
       } else {
         // 默认情况（其他CEX交易所）
-        if (!apiKey.trim() || !secretKey.trim()) return
+        // 创建模式：必须输入 API Key 和 Secret Key
+        if (!editingExchangeId && (!apiKey.trim() || !secretKey.trim())) {
+          toast.error(language === 'zh' ? '请输入 API Key 和 Secret Key' : 'Please enter API Key and Secret Key')
+          return
+        }
+        // 编辑模式：允许空值，后端会保留原有值
         await onSave(exchangeId, exchangeType, trimmedAccountName, apiKey.trim(), secretKey.trim(), '', testnet)
       }
     } finally {
@@ -679,19 +699,31 @@ export function ExchangeConfigModal({
                           style={{ color: '#EAECEF' }}
                         >
                           {t('apiKey', language)}
+                          {!editingExchangeId && <span style={{ color: '#F6465D' }}> *</span>}
                         </label>
+                        {editingExchangeId && (
+                          <div className="text-xs mb-1" style={{ color: '#848E9C' }}>
+                            {language === 'zh' ? '留空则不修改此字段' : 'Leave empty to keep unchanged'}
+                          </div>
+                        )}
                         <input
                           type="password"
                           value={apiKey}
                           onChange={(e) => setApiKey(e.target.value)}
-                          placeholder={t('enterAPIKey', language)}
+                          placeholder={
+                            editingExchangeId
+                              ? language === 'zh'
+                                ? '留空则不修改'
+                                : 'Leave empty to keep unchanged'
+                              : t('enterAPIKey', language)
+                          }
                           className="w-full px-3 py-2 rounded"
                           style={{
                             background: '#0B0E11',
                             border: '1px solid #2B3139',
                             color: '#EAECEF',
                           }}
-                          required
+                          required={!editingExchangeId}
                         />
                       </div>
 
@@ -701,19 +733,31 @@ export function ExchangeConfigModal({
                           style={{ color: '#EAECEF' }}
                         >
                           {t('secretKey', language)}
+                          {!editingExchangeId && <span style={{ color: '#F6465D' }}> *</span>}
                         </label>
+                        {editingExchangeId && (
+                          <div className="text-xs mb-1" style={{ color: '#848E9C' }}>
+                            {language === 'zh' ? '留空则不修改此字段' : 'Leave empty to keep unchanged'}
+                          </div>
+                        )}
                         <input
                           type="password"
                           value={secretKey}
                           onChange={(e) => setSecretKey(e.target.value)}
-                          placeholder={t('enterSecretKey', language)}
+                          placeholder={
+                            editingExchangeId
+                              ? language === 'zh'
+                                ? '留空则不修改'
+                                : 'Leave empty to keep unchanged'
+                              : t('enterSecretKey', language)
+                          }
                           className="w-full px-3 py-2 rounded"
                           style={{
                             background: '#0B0E11',
                             border: '1px solid #2B3139',
                             color: '#EAECEF',
                           }}
-                          required
+                          required={!editingExchangeId}
                         />
                       </div>
 
@@ -724,19 +768,31 @@ export function ExchangeConfigModal({
                             style={{ color: '#EAECEF' }}
                           >
                             {t('passphrase', language)}
+                            {!editingExchangeId && <span style={{ color: '#F6465D' }}> *</span>}
                           </label>
+                          {editingExchangeId && (
+                            <div className="text-xs mb-1" style={{ color: '#848E9C' }}>
+                              {language === 'zh' ? '留空则不修改此字段' : 'Leave empty to keep unchanged'}
+                            </div>
+                          )}
                           <input
                             type="password"
                             value={passphrase}
                             onChange={(e) => setPassphrase(e.target.value)}
-                            placeholder={t('enterPassphrase', language)}
+                            placeholder={
+                              editingExchangeId
+                                ? language === 'zh'
+                                  ? '留空则不修改'
+                                  : 'Leave empty to keep unchanged'
+                                : t('enterPassphrase', language)
+                            }
                             className="w-full px-3 py-2 rounded"
                             style={{
                               background: '#0B0E11',
                               border: '1px solid #2B3139',
                               color: '#EAECEF',
                             }}
-                            required
+                            required={!editingExchangeId}
                           />
                         </div>
                       )}
