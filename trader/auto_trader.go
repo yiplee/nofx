@@ -358,45 +358,19 @@ func NewAutoTrader(config AutoTraderConfig, st *store.Store, userID string) (*Au
 // If interval is 60 minutes, it returns the next hour boundary.
 // If interval is 4 hours, it returns the next 4-hour boundary (00:00, 04:00, 08:00, 12:00, 16:00, 20:00).
 func nextAlignedTime(interval time.Duration) time.Time {
-	now := time.Now()
-	intervalMinutes := int(interval.Minutes())
+	return nextAlignedTimeFrom(interval, time.Now())
+}
 
-	// For intervals >= 60 minutes, align to hour boundaries
-	if intervalMinutes >= 60 {
-		intervalHours := intervalMinutes / 60
-		currentHour := now.Hour()
-
-		// Calculate next aligned hour
-		nextHour := ((currentHour / intervalHours) + 1) * intervalHours
-
-		// If next hour exceeds 24, move to next day at 00:00
-		if nextHour >= 24 {
-			nextTime := time.Date(now.Year(), now.Month(), now.Day()+1, 0, 0, 0, 0, now.Location())
-			return nextTime
-		}
-
-		// Calculate the next aligned time at hour boundary
-		nextTime := time.Date(now.Year(), now.Month(), now.Day(), nextHour, 0, 0, 0, now.Location())
-		return nextTime
+// nextAlignedTimeFrom calculates the next wall-clock aligned time from a given start time.
+// This internal function is used for testing purposes.
+func nextAlignedTimeFrom(interval time.Duration, now time.Time) time.Time {
+	// remove seconds and nanoseconds
+	now = now.Truncate(time.Minute)
+	next := now.Truncate(interval)
+	if next.Equal(now) {
+		return next
 	}
-
-	// For intervals < 60 minutes, align to minute boundaries within the hour
-	_, currentMinute, _ := now.Clock()
-
-	// Calculate next aligned minute
-	nextMinute := ((currentMinute / intervalMinutes) + 1) * intervalMinutes
-
-	// If next minute exceeds 60, move to next hour
-	if nextMinute >= 60 {
-		// Move to next hour at minute 0
-		nextTime := time.Date(now.Year(), now.Month(), now.Day(), now.Hour()+1, 0, 0, 0, now.Location())
-		return nextTime
-	}
-
-	// Calculate the next aligned time
-	nextTime := time.Date(now.Year(), now.Month(), now.Day(), now.Hour(), nextMinute, 0, 0, now.Location())
-
-	return nextTime
+	return next.Add(interval)
 }
 
 // Run runs the automatic trading main loop
@@ -472,8 +446,7 @@ func (at *AutoTrader) runCycle() error {
 	}
 
 	// 1. Check if trading needs to be stopped
-	if time.Now().Before(at.stopUntil) {
-		remaining := at.stopUntil.Sub(time.Now())
+	if remaining := time.Until(at.stopUntil); remaining > 0 {
 		logger.Infof("⏸ Risk control: Trading paused, remaining %.0f minutes", remaining.Minutes())
 		record.Success = false
 		record.ErrorMessage = fmt.Sprintf("Risk control paused, remaining %.0f minutes", remaining.Minutes())
