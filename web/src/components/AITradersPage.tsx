@@ -835,8 +835,8 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
                 <div
                   key={model.id}
                   className={`flex items-center justify-between p-2 md:p-3 rounded transition-all ${inUse
-                      ? 'cursor-not-allowed'
-                      : 'cursor-pointer hover:bg-gray-700'
+                    ? 'cursor-not-allowed'
+                    : 'cursor-pointer hover:bg-gray-700'
                     }`}
                   style={{ background: '#0B0E11', border: '1px solid #2B3139' }}
                   onClick={() => handleModelClick(model.id)}
@@ -917,8 +917,8 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
                 <div
                   key={exchange.id}
                   className={`flex items-center justify-between p-2 md:p-3 rounded transition-all ${inUse
-                      ? 'cursor-not-allowed'
-                      : 'cursor-pointer hover:bg-gray-700'
+                    ? 'cursor-not-allowed'
+                    : 'cursor-pointer hover:bg-gray-700'
                     }`}
                   style={{ background: '#0B0E11', border: '1px solid #2B3139' }}
                   onClick={() => handleExchangeClick(exchange.id)}
@@ -1059,8 +1059,8 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
                     </div> */}
                     <div
                       className={`px-2 md:px-3 py-1 rounded text-xs font-bold ${trader.is_running
-                          ? 'bg-green-100 text-green-800'
-                          : 'bg-red-100 text-red-800'
+                        ? 'bg-green-100 text-green-800'
+                        : 'bg-red-100 text-red-800'
                         }`}
                       style={
                         trader.is_running
@@ -1252,7 +1252,7 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
       {/* Exchange Configuration Modal */}
       {showExchangeModal && (
         <ExchangeConfigModal
-          allExchanges={allExchanges}
+          allExchanges={editingExchange ? allExchanges : supportedExchanges}
           editingExchangeId={editingExchange}
           onSave={handleSaveExchangeConfig}
           onDelete={handleDeleteExchangeConfig}
