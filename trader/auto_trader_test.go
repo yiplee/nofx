@@ -989,3 +989,281 @@ func TestCalculatePnLPercentage_RealWorldScenarios(t *testing.T) {
 		}
 	})
 }
+
+// ============================================================
+// Independent unit tests - nextAlignedTime function tests
+// ============================================================
+
+func TestNextAlignedTime(t *testing.T) {
+	// Set a fixed time for testing: 2024-01-01 13:02:30
+	testTime := time.Date(2024, 1, 1, 13, 2, 30, 0, time.UTC)
+
+	tests := []struct {
+		name           string
+		currentTime    time.Time
+		interval       time.Duration
+		expectedMinute int
+		expectedHour   int
+		expectedDay    int // For date rollover cases
+	}{
+		{
+			name:           "5 minute interval at 13:02",
+			currentTime:    testTime,
+			interval:       5 * time.Minute,
+			expectedMinute: 5, // Next should be 13:05
+			expectedHour:   13,
+			expectedDay:    1, // Same day
+		},
+		{
+			name:           "5 minute interval at 13:07",
+			currentTime:    time.Date(2024, 1, 1, 13, 7, 30, 0, time.UTC),
+			interval:       5 * time.Minute,
+			expectedMinute: 10, // Next should be 13:10
+			expectedHour:   13,
+			expectedDay:    1,
+		},
+		{
+			name:           "5 minute interval at 13:55",
+			currentTime:    time.Date(2024, 1, 1, 13, 55, 30, 0, time.UTC),
+			interval:       5 * time.Minute,
+			expectedMinute: 0, // Next should be 14:00
+			expectedHour:   14,
+			expectedDay:    1,
+		},
+		{
+			name:           "60 minute interval at 13:30",
+			currentTime:    time.Date(2024, 1, 1, 13, 30, 0, 0, time.UTC),
+			interval:       60 * time.Minute,
+			expectedMinute: 0, // Next should be 14:00
+			expectedHour:   14,
+			expectedDay:    1,
+		},
+		{
+			name:           "60 minute interval at 13:00",
+			currentTime:    time.Date(2024, 1, 1, 13, 0, 0, 0, time.UTC),
+			interval:       60 * time.Minute,
+			expectedMinute: 0, // Next should be 14:00
+			expectedHour:   14,
+			expectedDay:    1,
+		},
+		{
+			name:           "3 minute interval at 13:01",
+			currentTime:    time.Date(2024, 1, 1, 13, 1, 30, 0, time.UTC),
+			interval:       3 * time.Minute,
+			expectedMinute: 3, // Next should be 13:03
+			expectedHour:   13,
+			expectedDay:    1,
+		},
+		{
+			name:           "3 minute interval at 13:03",
+			currentTime:    time.Date(2024, 1, 1, 13, 3, 0, 0, time.UTC),
+			interval:       3 * time.Minute,
+			expectedMinute: 6, // Next should be 13:06
+			expectedHour:   13,
+			expectedDay:    1,
+		},
+		{
+			name:           "15 minute interval at 13:17",
+			currentTime:    time.Date(2024, 1, 1, 13, 17, 0, 0, time.UTC),
+			interval:       15 * time.Minute,
+			expectedMinute: 30, // Next should be 13:30
+			expectedHour:   13,
+			expectedDay:    1,
+		},
+		{
+			name:           "4 hour interval at 13:30",
+			currentTime:    time.Date(2024, 1, 1, 13, 30, 0, 0, time.UTC),
+			interval:       4 * time.Hour,
+			expectedMinute: 0, // Next should be 16:00
+			expectedHour:   16,
+			expectedDay:    1,
+		},
+		{
+			name:           "4 hour interval at 15:45",
+			currentTime:    time.Date(2024, 1, 1, 15, 45, 0, 0, time.UTC),
+			interval:       4 * time.Hour,
+			expectedMinute: 0, // Next should be 16:00
+			expectedHour:   16,
+			expectedDay:    1,
+		},
+		{
+			name:           "4 hour interval at 16:00",
+			currentTime:    time.Date(2024, 1, 1, 16, 0, 0, 0, time.UTC),
+			interval:       4 * time.Hour,
+			expectedMinute: 0, // Next should be 20:00
+			expectedHour:   20,
+			expectedDay:    1,
+		},
+		{
+			name:           "4 hour interval at 22:30",
+			currentTime:    time.Date(2024, 1, 1, 22, 30, 0, 0, time.UTC),
+			interval:       4 * time.Hour,
+			expectedMinute: 0, // Next should be 00:00 (next day)
+			expectedHour:   0,
+			expectedDay:    2, // Next day
+		},
+		{
+			name:           "4 hour interval at 02:15",
+			currentTime:    time.Date(2024, 1, 1, 2, 15, 0, 0, time.UTC),
+			interval:       4 * time.Hour,
+			expectedMinute: 0, // Next should be 04:00
+			expectedHour:   4,
+			expectedDay:    1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Patch time.Now to return our test time
+			patches := gomonkey.NewPatches()
+			defer patches.Reset()
+
+			patches.ApplyFunc(time.Now, func() time.Time {
+				return tt.currentTime
+			})
+
+			result := nextAlignedTime(tt.interval)
+
+			if result.Hour() != tt.expectedHour {
+				t.Errorf("nextAlignedTime() hour = %v, want %v", result.Hour(), tt.expectedHour)
+			}
+			if result.Minute() != tt.expectedMinute {
+				t.Errorf("nextAlignedTime() minute = %v, want %v", result.Minute(), tt.expectedMinute)
+			}
+			if result.Second() != 0 {
+				t.Errorf("nextAlignedTime() second = %v, want 0", result.Second())
+			}
+			if result.Nanosecond() != 0 {
+				t.Errorf("nextAlignedTime() nanosecond = %v, want 0", result.Nanosecond())
+			}
+
+			// Verify the day (for date rollover cases)
+			if tt.expectedDay > 0 && result.Day() != tt.expectedDay {
+				t.Errorf("nextAlignedTime() day = %v, want %v", result.Day(), tt.expectedDay)
+			}
+
+			// Verify the result is in the future
+			if result.Before(tt.currentTime) || result.Equal(tt.currentTime) {
+				t.Errorf("nextAlignedTime() = %v, should be after current time %v", result, tt.currentTime)
+			}
+		})
+	}
+}
+
+func TestNextAlignedTime_RealWorldScenarios(t *testing.T) {
+	t.Run("5 minute interval - multiple boundaries", func(t *testing.T) {
+		// Test that 5-minute intervals align to :00, :05, :10, :15, etc.
+		testCases := []struct {
+			current  time.Time
+			expected time.Time
+		}{
+			{
+				current:  time.Date(2024, 1, 1, 13, 2, 0, 0, time.UTC),
+				expected: time.Date(2024, 1, 1, 13, 5, 0, 0, time.UTC),
+			},
+			{
+				current:  time.Date(2024, 1, 1, 13, 5, 0, 0, time.UTC),
+				expected: time.Date(2024, 1, 1, 13, 10, 0, 0, time.UTC),
+			},
+			{
+				current:  time.Date(2024, 1, 1, 13, 58, 0, 0, time.UTC),
+				expected: time.Date(2024, 1, 1, 14, 0, 0, 0, time.UTC),
+			},
+		}
+
+		for _, tc := range testCases {
+			patches := gomonkey.NewPatches()
+			patches.ApplyFunc(time.Now, func() time.Time {
+				return tc.current
+			})
+
+			result := nextAlignedTime(5 * time.Minute)
+			if !result.Equal(tc.expected) {
+				t.Errorf("nextAlignedTime() = %v, want %v", result, tc.expected)
+			}
+			patches.Reset()
+		}
+	})
+
+	t.Run("60 minute interval - hour boundaries", func(t *testing.T) {
+		testCases := []struct {
+			current  time.Time
+			expected time.Time
+		}{
+			{
+				current:  time.Date(2024, 1, 1, 13, 30, 0, 0, time.UTC),
+				expected: time.Date(2024, 1, 1, 14, 0, 0, 0, time.UTC),
+			},
+			{
+				current:  time.Date(2024, 1, 1, 13, 0, 0, 0, time.UTC),
+				expected: time.Date(2024, 1, 1, 14, 0, 0, 0, time.UTC),
+			},
+			{
+				current:  time.Date(2024, 1, 1, 23, 45, 0, 0, time.UTC),
+				expected: time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC),
+			},
+		}
+
+		for _, tc := range testCases {
+			patches := gomonkey.NewPatches()
+			patches.ApplyFunc(time.Now, func() time.Time {
+				return tc.current
+			})
+
+			result := nextAlignedTime(60 * time.Minute)
+			if !result.Equal(tc.expected) {
+				t.Errorf("nextAlignedTime() = %v, want %v", result, tc.expected)
+			}
+			patches.Reset()
+		}
+	})
+
+	t.Run("4 hour interval - 4-hour boundaries", func(t *testing.T) {
+		testCases := []struct {
+			current  time.Time
+			expected time.Time
+		}{
+			{
+				current:  time.Date(2024, 1, 1, 13, 30, 0, 0, time.UTC),
+				expected: time.Date(2024, 1, 1, 16, 0, 0, 0, time.UTC),
+			},
+			{
+				current:  time.Date(2024, 1, 1, 15, 45, 0, 0, time.UTC),
+				expected: time.Date(2024, 1, 1, 16, 0, 0, 0, time.UTC),
+			},
+			{
+				current:  time.Date(2024, 1, 1, 16, 0, 0, 0, time.UTC),
+				expected: time.Date(2024, 1, 1, 20, 0, 0, 0, time.UTC),
+			},
+			{
+				current:  time.Date(2024, 1, 1, 20, 0, 0, 0, time.UTC),
+				expected: time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC),
+			},
+			{
+				current:  time.Date(2024, 1, 1, 22, 30, 0, 0, time.UTC),
+				expected: time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC),
+			},
+			{
+				current:  time.Date(2024, 1, 1, 2, 15, 0, 0, time.UTC),
+				expected: time.Date(2024, 1, 1, 4, 0, 0, 0, time.UTC),
+			},
+			{
+				current:  time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC),
+				expected: time.Date(2024, 1, 1, 4, 0, 0, 0, time.UTC),
+			},
+		}
+
+		for _, tc := range testCases {
+			patches := gomonkey.NewPatches()
+			patches.ApplyFunc(time.Now, func() time.Time {
+				return tc.current
+			})
+
+			result := nextAlignedTime(4 * time.Hour)
+			if !result.Equal(tc.expected) {
+				t.Errorf("nextAlignedTime() = %v, want %v", result, tc.expected)
+			}
+			patches.Reset()
+		}
+	})
+}

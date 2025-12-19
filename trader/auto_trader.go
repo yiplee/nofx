@@ -38,13 +38,13 @@ type AutoTraderConfig struct {
 	BybitSecretKey string
 
 	// OKX API configuration
-	OKXAPIKey    string
-	OKXSecretKey string
+	OKXAPIKey     string
+	OKXSecretKey  string
 	OKXPassphrase string
 
 	// Bitget API configuration
-	BitgetAPIKey    string
-	BitgetSecretKey string
+	BitgetAPIKey     string
+	BitgetSecretKey  string
 	BitgetPassphrase string
 
 	// Hyperliquid configuration
@@ -353,6 +353,52 @@ func NewAutoTrader(config AutoTraderConfig, st *store.Store, userID string) (*Au
 	}, nil
 }
 
+// nextAlignedTime calculates the next wall-clock aligned time based on the scan interval.
+// For example, if interval is 5 minutes, it returns the next time at :00, :05, :10, :15, etc.
+// If interval is 60 minutes, it returns the next hour boundary.
+// If interval is 4 hours, it returns the next 4-hour boundary (00:00, 04:00, 08:00, 12:00, 16:00, 20:00).
+func nextAlignedTime(interval time.Duration) time.Time {
+	now := time.Now()
+	intervalMinutes := int(interval.Minutes())
+
+	// For intervals >= 60 minutes, align to hour boundaries
+	if intervalMinutes >= 60 {
+		intervalHours := intervalMinutes / 60
+		currentHour := now.Hour()
+
+		// Calculate next aligned hour
+		nextHour := ((currentHour / intervalHours) + 1) * intervalHours
+
+		// If next hour exceeds 24, move to next day at 00:00
+		if nextHour >= 24 {
+			nextTime := time.Date(now.Year(), now.Month(), now.Day()+1, 0, 0, 0, 0, now.Location())
+			return nextTime
+		}
+
+		// Calculate the next aligned time at hour boundary
+		nextTime := time.Date(now.Year(), now.Month(), now.Day(), nextHour, 0, 0, 0, now.Location())
+		return nextTime
+	}
+
+	// For intervals < 60 minutes, align to minute boundaries within the hour
+	_, currentMinute, _ := now.Clock()
+
+	// Calculate next aligned minute
+	nextMinute := ((currentMinute / intervalMinutes) + 1) * intervalMinutes
+
+	// If next minute exceeds 60, move to next hour
+	if nextMinute >= 60 {
+		// Move to next hour at minute 0
+		nextTime := time.Date(now.Year(), now.Month(), now.Day(), now.Hour()+1, 0, 0, 0, now.Location())
+		return nextTime
+	}
+
+	// Calculate the next aligned time
+	nextTime := time.Date(now.Year(), now.Month(), now.Day(), now.Hour(), nextMinute, 0, 0, now.Location())
+
+	return nextTime
+}
+
 // Run runs the automatic trading main loop
 func (at *AutoTrader) Run() error {
 	at.isRunning = true
@@ -369,23 +415,31 @@ func (at *AutoTrader) Run() error {
 	// Start drawdown monitoring
 	at.startDrawdownMonitor()
 
-	ticker := time.NewTicker(at.config.ScanInterval)
-	defer ticker.Stop()
-
-	// Execute immediately on first run
-	if err := at.runCycle(); err != nil {
-		logger.Infof("❌ Execution failed: %v", err)
-	}
-
 	for at.isRunning {
-		select {
-		case <-ticker.C:
+		// Calculate next aligned boundary time
+		nextTime := nextAlignedTime(at.config.ScanInterval)
+		waitDuration := time.Until(nextTime)
+
+		if waitDuration > 0 {
+			logger.Infof("⏰ Next scan scheduled at %s (in %v)", nextTime.Format("2006-01-02 15:04:05"), waitDuration)
+
+			// Wait until next aligned time or stop signal
+			select {
+			case <-time.After(waitDuration):
+				// Time reached, execute scan
+				if err := at.runCycle(); err != nil {
+					logger.Infof("❌ Execution failed: %v", err)
+				}
+			case <-at.stopMonitorCh:
+				logger.Infof("[%s] ⏹ Stop signal received, exiting automatic trading main loop", at.name)
+				return nil
+			}
+		} else {
+			// If wait duration is 0 or negative (shouldn't happen, but handle gracefully),
+			// execute immediately and recalculate
 			if err := at.runCycle(); err != nil {
 				logger.Infof("❌ Execution failed: %v", err)
 			}
-		case <-at.stopMonitorCh:
-			logger.Infof("[%s] ⏹ Stop signal received, exiting automatic trading main loop", at.name)
-			return nil
 		}
 	}
 
@@ -1686,8 +1740,8 @@ func (at *AutoTrader) recordAndConfirmOrder(orderResult map[string]interface{}, 
 	}
 
 	// Poll order status to get actual fill price, quantity and fee
-	var actualPrice = price       // fallback to market price
-	var actualQty = quantity      // fallback to requested quantity
+	var actualPrice = price  // fallback to market price
+	var actualQty = quantity // fallback to requested quantity
 	var fee float64
 
 	// Wait for order to be filled and get actual fill data
@@ -1773,10 +1827,10 @@ func (at *AutoTrader) recordPositionChange(orderID, symbol, side, action string,
 		// Update position record
 		err = at.store.Position().ClosePosition(
 			openPos.ID,
-			price,       // exitPrice
-			orderID,     // exitOrderID
+			price,   // exitPrice
+			orderID, // exitOrderID
 			realizedPnL,
-			fee,         // fee from exchange API
+			fee, // fee from exchange API
 			"ai_decision",
 		)
 		if err != nil {
@@ -1870,4 +1924,3 @@ func (at *AutoTrader) enforceMaxPositions(currentPositionCount int) error {
 	}
 	return nil
 }
-
