@@ -905,7 +905,7 @@ func (t *FuturesTrader) setTrailingTakeProfit(symbol string, side futures.SideTy
 		Side(side).
 		PositionSide(posSide).
 		Type(futures.AlgoOrderTypeTrailingStopMarket).
-		TriggerPrice(fmt.Sprintf("%.8f", activationPrice)).
+		ActivationPrice(fmt.Sprintf("%.8f", activationPrice)).
 		CallbackRate(callbackRateStr).
 		WorkingType(futures.WorkingTypeContractPrice).
 		ClosePosition(true).
