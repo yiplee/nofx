@@ -741,64 +741,6 @@ export function ExchangeConfigModal({
                         </div>
                       )}
 
-                      {/* Binance 白名单IP提示 */}
-                      {currentExchangeType === 'binance' && (
-                        <div
-                          className="p-4 rounded"
-                          style={{
-                            background: 'rgba(240, 185, 11, 0.1)',
-                            border: '1px solid rgba(240, 185, 11, 0.2)',
-                          }}
-                        >
-                          <div
-                            className="text-sm font-semibold mb-2"
-                            style={{ color: '#F0B90B' }}
-                          >
-                            {t('whitelistIP', language)}
-                          </div>
-                          <div
-                            className="text-xs mb-3"
-                            style={{ color: '#848E9C' }}
-                          >
-                            {t('whitelistIPDesc', language)}
-                          </div>
-
-                          {loadingIP ? (
-                            <div
-                              className="text-xs"
-                              style={{ color: '#848E9C' }}
-                            >
-                              {t('loadingServerIP', language)}
-                            </div>
-                          ) : serverIP && serverIP.public_ip ? (
-                            <div
-                              className="flex items-center gap-2 p-2 rounded"
-                              style={{ background: '#0B0E11' }}
-                            >
-                              <code
-                                className="flex-1 text-sm font-mono"
-                                style={{ color: '#F0B90B' }}
-                              >
-                                {serverIP.public_ip}
-                              </code>
-                              <button
-                                type="button"
-                                onClick={() => handleCopyIP(serverIP.public_ip)}
-                                className="px-3 py-1 rounded text-xs font-semibold transition-all hover:scale-105"
-                                style={{
-                                  background: 'rgba(240, 185, 11, 0.2)',
-                                  color: '#F0B90B',
-                                }}
-                              >
-                                {copiedIP
-                                  ? t('ipCopied', language)
-                                  : t('copyIP', language)}
-                              </button>
-                            </div>
-                          ) : null}
-                        </div>
-                      )}
-
                       {/* 追踪止盈配置（币安等交易所支持） */}
                       {currentExchangeType === 'binance' && (
                         <div className="space-y-3">
@@ -860,6 +802,64 @@ export function ExchangeConfigModal({
                               </div>
                             </div>
                           )}
+                        </div>
+                      )}
+
+                      {/* Binance 白名单IP提示 */}
+                      {currentExchangeType === 'binance' && (
+                        <div
+                          className="p-4 rounded"
+                          style={{
+                            background: 'rgba(240, 185, 11, 0.1)',
+                            border: '1px solid rgba(240, 185, 11, 0.2)',
+                          }}
+                        >
+                          <div
+                            className="text-sm font-semibold mb-2"
+                            style={{ color: '#F0B90B' }}
+                          >
+                            {t('whitelistIP', language)}
+                          </div>
+                          <div
+                            className="text-xs mb-3"
+                            style={{ color: '#848E9C' }}
+                          >
+                            {t('whitelistIPDesc', language)}
+                          </div>
+
+                          {loadingIP ? (
+                            <div
+                              className="text-xs"
+                              style={{ color: '#848E9C' }}
+                            >
+                              {t('loadingServerIP', language)}
+                            </div>
+                          ) : serverIP && serverIP.public_ip ? (
+                            <div
+                              className="flex items-center gap-2 p-2 rounded"
+                              style={{ background: '#0B0E11' }}
+                            >
+                              <code
+                                className="flex-1 text-sm font-mono"
+                                style={{ color: '#F0B90B' }}
+                              >
+                                {serverIP.public_ip}
+                              </code>
+                              <button
+                                type="button"
+                                onClick={() => handleCopyIP(serverIP.public_ip)}
+                                className="px-3 py-1 rounded text-xs font-semibold transition-all hover:scale-105"
+                                style={{
+                                  background: 'rgba(240, 185, 11, 0.2)',
+                                  color: '#F0B90B',
+                                }}
+                              >
+                                {copiedIP
+                                  ? t('ipCopied', language)
+                                  : t('copyIP', language)}
+                              </button>
+                            </div>
+                          ) : null}
                         </div>
                       )}
                     </>
