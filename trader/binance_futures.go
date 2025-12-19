@@ -61,7 +61,7 @@ type FuturesTrader struct {
 	cacheDuration time.Duration
 
 	// Trailing take profit configuration
-	useTrailingTakeProfit bool   // Whether to use trailing take profit instead of market take profit
+	useTrailingTakeProfit bool    // Whether to use trailing take profit instead of market take profit
 	trailingCallbackRate  float64 // Trailing callback rate percentage (default 1%)
 }
 
@@ -77,10 +77,10 @@ func NewFuturesTrader(apiKey, secretKey string, userId string) *FuturesTrader {
 	// Sync time to avoid "Timestamp ahead" error
 	syncBinanceServerTime(client)
 	trader := &FuturesTrader{
-		client:                 client,
-		cacheDuration:          15 * time.Second, // 15-second cache
+		client:                client,
+		cacheDuration:         15 * time.Second, // 15-second cache
 		useTrailingTakeProfit: false,            // Default: use market take profit
-		trailingCallbackRate:  1.0,               // Default: 1% callback rate
+		trailingCallbackRate:  1.0,              // Default: 1% callback rate
 	}
 
 	// Set dual-side position mode (Hedge Mode)
@@ -879,7 +879,7 @@ func (t *FuturesTrader) SetTakeProfit(symbol string, positionSide string, quanti
 		Side(side).
 		PositionSide(posSide).
 		Type(futures.AlgoOrderTypeTakeProfitMarket).
-		TriggerPrice(fmt.Sprintf("%.8f", takeProfitPrice)).
+		ActivationPrice(fmt.Sprintf("%.8f", takeProfitPrice)).
 		WorkingType(futures.WorkingTypeContractPrice).
 		ClosePosition(true).
 		ClientAlgoId(getBrOrderID()).
