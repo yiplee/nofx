@@ -1344,35 +1344,38 @@ export function ExchangeConfigModal({
                 isSaving ||
                 !selectedTemplate ||
                 !accountName.trim() ||
-                (currentExchangeType === 'binance' &&
-                  (!apiKey.trim() || !secretKey.trim())) ||
-                (currentExchangeType === 'okx' &&
-                  (!apiKey.trim() ||
-                    !secretKey.trim() ||
-                    !passphrase.trim())) ||
-                (currentExchangeType === 'bitget' &&
-                  (!apiKey.trim() ||
-                    !secretKey.trim() ||
-                    !passphrase.trim())) ||
-                (currentExchangeType === 'hyperliquid' &&
-                  (!apiKey.trim() || !hyperliquidWalletAddr.trim())) || // 验证私钥和钱包地址
-                (currentExchangeType === 'aster' &&
-                  (!asterUser.trim() ||
-                    !asterSigner.trim() ||
-                    !asterPrivateKey.trim())) ||
-                (currentExchangeType === 'lighter' &&
-                  (!lighterWalletAddr.trim() || !lighterApiKeyPrivateKey.trim())) ||
-                (currentExchangeType === 'bybit' &&
-                  (!apiKey.trim() || !secretKey.trim())) ||
-                (selectedTemplate?.type === 'cex' &&
-                  currentExchangeType !== 'hyperliquid' &&
-                  currentExchangeType !== 'aster' &&
-                  currentExchangeType !== 'lighter' &&
-                  currentExchangeType !== 'binance' &&
-                  currentExchangeType !== 'bybit' &&
-                  currentExchangeType !== 'okx' &&
-                  currentExchangeType !== 'bitget' &&
-                  (!apiKey.trim() || !secretKey.trim()))
+                // 创建模式下的验证（编辑模式下允许留空）
+                (!editingExchangeId && (
+                  (currentExchangeType === 'binance' &&
+                    (!apiKey.trim() || !secretKey.trim())) ||
+                  (currentExchangeType === 'okx' &&
+                    (!apiKey.trim() ||
+                      !secretKey.trim() ||
+                      !passphrase.trim())) ||
+                  (currentExchangeType === 'bitget' &&
+                    (!apiKey.trim() ||
+                      !secretKey.trim() ||
+                      !passphrase.trim())) ||
+                  (currentExchangeType === 'hyperliquid' &&
+                    (!apiKey.trim() || !hyperliquidWalletAddr.trim())) || // 验证私钥和钱包地址
+                  (currentExchangeType === 'aster' &&
+                    (!asterUser.trim() ||
+                      !asterSigner.trim() ||
+                      !asterPrivateKey.trim())) ||
+                  (currentExchangeType === 'lighter' &&
+                    (!lighterWalletAddr.trim() || !lighterApiKeyPrivateKey.trim())) ||
+                  (currentExchangeType === 'bybit' &&
+                    (!apiKey.trim() || !secretKey.trim())) ||
+                  (selectedTemplate?.type === 'cex' &&
+                    currentExchangeType !== 'hyperliquid' &&
+                    currentExchangeType !== 'aster' &&
+                    currentExchangeType !== 'lighter' &&
+                    currentExchangeType !== 'binance' &&
+                    currentExchangeType !== 'bybit' &&
+                    currentExchangeType !== 'okx' &&
+                    currentExchangeType !== 'bitget' &&
+                    (!apiKey.trim() || !secretKey.trim()))
+                ))
               }
               className="flex-1 px-4 py-2 rounded text-sm font-semibold disabled:opacity-50"
               style={{ background: '#F0B90B', color: '#000' }}
