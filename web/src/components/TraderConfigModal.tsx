@@ -178,7 +178,7 @@ export function TraderConfigModal({
         loading: '正在保存…',
         success: '保存成功',
         error: '保存失败',
-      })
+      }).unwrap()
       onClose()
     } catch (error) {
       console.error('保存失败:', error)
@@ -369,7 +369,7 @@ export function TraderConfigModal({
                     <div>
                       币种来源: {selectedStrategy.config.coin_source.source_type === 'static' ? '固定币种' :
                         selectedStrategy.config.coin_source.source_type === 'coinpool' ? 'Coin Pool' :
-                        selectedStrategy.config.coin_source.source_type === 'oi_top' ? 'OI Top' : '混合'}
+                          selectedStrategy.config.coin_source.source_type === 'oi_top' ? 'OI Top' : '混合'}
                     </div>
                     <div>
                       保证金上限: {((selectedStrategy.config.risk_control?.max_margin_usage || 0.9) * 100).toFixed(0)}%
@@ -395,11 +395,10 @@ export function TraderConfigModal({
                     <button
                       type="button"
                       onClick={() => handleInputChange('is_cross_margin', true)}
-                      className={`flex-1 px-3 py-2 rounded text-sm ${
-                        formData.is_cross_margin
+                      className={`flex-1 px-3 py-2 rounded text-sm ${formData.is_cross_margin
                           ? 'bg-[#F0B90B] text-black'
                           : 'bg-[#0B0E11] text-[#848E9C] border border-[#2B3139]'
-                      }`}
+                        }`}
                     >
                       全仓
                     </button>
@@ -408,11 +407,10 @@ export function TraderConfigModal({
                       onClick={() =>
                         handleInputChange('is_cross_margin', false)
                       }
-                      className={`flex-1 px-3 py-2 rounded text-sm ${
-                        !formData.is_cross_margin
+                      className={`flex-1 px-3 py-2 rounded text-sm ${!formData.is_cross_margin
                           ? 'bg-[#F0B90B] text-black'
                           : 'bg-[#0B0E11] text-[#848E9C] border border-[#2B3139]'
-                      }`}
+                        }`}
                     >
                       逐仓
                     </button>
@@ -452,22 +450,20 @@ export function TraderConfigModal({
                   <button
                     type="button"
                     onClick={() => handleInputChange('show_in_competition', true)}
-                    className={`flex-1 px-3 py-2 rounded text-sm ${
-                      formData.show_in_competition
+                    className={`flex-1 px-3 py-2 rounded text-sm ${formData.show_in_competition
                         ? 'bg-[#F0B90B] text-black'
                         : 'bg-[#0B0E11] text-[#848E9C] border border-[#2B3139]'
-                    }`}
+                      }`}
                   >
                     显示
                   </button>
                   <button
                     type="button"
                     onClick={() => handleInputChange('show_in_competition', false)}
-                    className={`flex-1 px-3 py-2 rounded text-sm ${
-                      !formData.show_in_competition
+                    className={`flex-1 px-3 py-2 rounded text-sm ${!formData.show_in_competition
                         ? 'bg-[#F0B90B] text-black'
                         : 'bg-[#0B0E11] text-[#848E9C] border border-[#2B3139]'
-                    }`}
+                      }`}
                   >
                     隐藏
                   </button>
