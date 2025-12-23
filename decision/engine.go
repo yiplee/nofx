@@ -1162,7 +1162,7 @@ func (e *StrategyEngine) formatTimeframeSeriesData(sb *strings.Builder, data *ma
 		sb.WriteString("Time(UTC)      Open      High      Low       Close     Volume\n")
 		for i, k := range data.Klines {
 			t := time.Unix(k.Time/1000, 0).UTC()
-			timeStr := t.Format("01-02 15:04")
+			timeStr := t.Format("2006-01-02 15:04")
 			marker := ""
 			if i == len(data.Klines)-1 {
 				marker = "  <- current"
