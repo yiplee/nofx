@@ -1,160 +1,150 @@
 package market
 
 import (
-	"encoding/json"
+	"context"
 	"fmt"
-	"io"
-	"log"
-	"net/http"
-	"nofx/hook"
-	"strconv"
 	"time"
+
+	"github.com/adshao/go-binance/v2/futures"
 )
 
 const (
 	baseURL = "https://fapi.binance.com"
 )
 
+var sharedAPIClient = NewAPIClient()
+
 type APIClient struct {
-	client *http.Client
+	client *futures.Client
 }
 
 func NewAPIClient() *APIClient {
-	client := &http.Client{
-		Timeout: 30 * time.Second,
-	}
-
-	hookRes := hook.HookExec[hook.SetHttpClientResult](hook.SET_HTTP_CLIENT, client)
-	if hookRes != nil && hookRes.Error() == nil {
-		log.Printf("Using HTTP client set by Hook")
-		client = hookRes.GetResult()
-	}
-
 	return &APIClient{
-		client: client,
+		client: futures.NewClient("", ""),
 	}
 }
 
 func (c *APIClient) GetExchangeInfo() (*ExchangeInfo, error) {
-	url := fmt.Sprintf("%s/fapi/v1/exchangeInfo", baseURL)
-	resp, err := c.client.Get(url)
+	resp, err := c.client.NewExchangeInfoService().Do(context.Background())
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
 
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
 	var exchangeInfo ExchangeInfo
-	err = json.Unmarshal(body, &exchangeInfo)
-	if err != nil {
-		return nil, err
+	for _, symbol := range resp.Symbols {
+		exchangeInfo.Symbols = append(exchangeInfo.Symbols, SymbolInfo{
+			Symbol:            symbol.Symbol,
+			Status:            symbol.Status,
+			BaseAsset:         symbol.BaseAsset,
+			QuoteAsset:        symbol.QuoteAsset,
+			ContractType:      string(symbol.ContractType),
+			PricePrecision:    symbol.PricePrecision,
+			QuantityPrecision: symbol.QuantityPrecision,
+		})
 	}
-
 	return &exchangeInfo, nil
 }
 
 func (c *APIClient) GetKlines(symbol, interval string, limit int) ([]Kline, error) {
-	url := fmt.Sprintf("%s/fapi/v1/klines", baseURL)
-	req, err := http.NewRequest("GET", url, nil)
+	req := c.client.NewKlinesService()
+	req.Symbol(symbol)
+	req.Interval(interval)
+	req.Limit(limit)
+	resp, err := req.Do(context.Background())
 	if err != nil {
 		return nil, err
 	}
 
-	q := req.URL.Query()
-	q.Add("symbol", symbol)
-	q.Add("interval", interval)
-	q.Add("limit", strconv.Itoa(limit))
-	req.URL.RawQuery = q.Encode()
-
-	resp, err := c.client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	var klineResponses []KlineResponse
-	err = json.Unmarshal(body, &klineResponses)
-	if err != nil {
-		log.Printf("Failed to get K-line data, response content: %s", string(body))
-		return nil, err
-	}
-
-	var klines []Kline
-	for _, kr := range klineResponses {
-		kline, err := parseKline(kr)
-		if err != nil {
-			log.Printf("Failed to parse K-line data: %v", err)
-			continue
+	klines := make([]Kline, len(resp))
+	for i, kline := range resp {
+		klines[i] = Kline{
+			OpenTime:            kline.OpenTime,
+			Open:                parseFloat(kline.Open),
+			High:                parseFloat(kline.High),
+			Low:                 parseFloat(kline.Low),
+			Close:               parseFloat(kline.Close),
+			Volume:              parseFloat(kline.Volume),
+			CloseTime:           kline.CloseTime,
+			QuoteVolume:         parseFloat(kline.QuoteAssetVolume),
+			Trades:              int(kline.TradeNum),
+			TakerBuyBaseVolume:  parseFloat(kline.TakerBuyBaseAssetVolume),
+			TakerBuyQuoteVolume: parseFloat(kline.TakerBuyQuoteAssetVolume),
 		}
-		klines = append(klines, kline)
 	}
 
 	return klines, nil
 }
 
-func parseKline(kr KlineResponse) (Kline, error) {
-	var kline Kline
-
-	if len(kr) < 11 {
-		return kline, fmt.Errorf("invalid kline data")
+func (c *APIClient) GetKlinesRange(symbol, interval string, start, end time.Time) ([]Kline, error) {
+	req := c.client.NewKlinesService()
+	req.Symbol(symbol)
+	req.Interval(interval)
+	req.StartTime(start.UnixMilli())
+	req.EndTime(end.UnixMilli())
+	resp, err := req.Do(context.Background())
+	if err != nil {
+		return nil, err
 	}
 
-	// Parse each field
-	kline.OpenTime = int64(kr[0].(float64))
-	kline.Open, _ = strconv.ParseFloat(kr[1].(string), 64)
-	kline.High, _ = strconv.ParseFloat(kr[2].(string), 64)
-	kline.Low, _ = strconv.ParseFloat(kr[3].(string), 64)
-	kline.Close, _ = strconv.ParseFloat(kr[4].(string), 64)
-	kline.Volume, _ = strconv.ParseFloat(kr[5].(string), 64)
-	kline.CloseTime = int64(kr[6].(float64))
-	kline.QuoteVolume, _ = strconv.ParseFloat(kr[7].(string), 64)
-	kline.Trades = int(kr[8].(float64))
-	kline.TakerBuyBaseVolume, _ = strconv.ParseFloat(kr[9].(string), 64)
-	kline.TakerBuyQuoteVolume, _ = strconv.ParseFloat(kr[10].(string), 64)
-
-	return kline, nil
+	klines := make([]Kline, len(resp))
+	for i, kline := range resp {
+		klines[i] = Kline{
+			OpenTime:            kline.OpenTime,
+			Open:                parseFloat(kline.Open),
+			High:                parseFloat(kline.High),
+			Low:                 parseFloat(kline.Low),
+			Close:               parseFloat(kline.Close),
+			Volume:              parseFloat(kline.Volume),
+			CloseTime:           kline.CloseTime,
+			QuoteVolume:         parseFloat(kline.QuoteAssetVolume),
+			Trades:              int(kline.TradeNum),
+			TakerBuyBaseVolume:  parseFloat(kline.TakerBuyBaseAssetVolume),
+			TakerBuyQuoteVolume: parseFloat(kline.TakerBuyQuoteAssetVolume),
+		}
+	}
+	return klines, nil
 }
 
-func (c *APIClient) GetCurrentPrice(symbol string) (float64, error) {
-	url := fmt.Sprintf("%s/fapi/v1/ticker/price", baseURL)
-	req, err := http.NewRequest("GET", url, nil)
+func GetKlinesRange(symbol, interval string, start, end time.Time) ([]Kline, error) {
+	return sharedAPIClient.GetKlinesRange(symbol, interval, start, end)
+}
+
+func (c *APIClient) GetFundingData(symbol string) (*FundingData, error) {
+	req := c.client.NewFundingRateService()
+	req.Symbol(symbol)
+	resp, err := req.Do(context.Background())
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 
-	q := req.URL.Query()
-	q.Add("symbol", symbol)
-	req.URL.RawQuery = q.Encode()
-
-	resp, err := c.client.Do(req)
-	if err != nil {
-		return 0, err
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return 0, err
+	for _, rate := range resp {
+		if rate.Symbol == symbol {
+			return &FundingData{
+				Symbol:      symbol,
+				FundingRate: parseFloat(rate.FundingRate),
+				MarkPrice:   parseFloat(rate.MarkPrice),
+			}, nil
+		}
 	}
 
-	var ticker PriceTicker
-	err = json.Unmarshal(body, &ticker)
+	return nil, fmt.Errorf("funding rate not found for symbol: %s", symbol)
+}
+
+func GetFundingData(symbol string) (*FundingData, error) {
+	return sharedAPIClient.GetFundingData(symbol)
+}
+
+func (c *APIClient) GetOpenInterestData(symbol string) (*OIData, error) {
+	req := c.client.NewGetOpenInterestService()
+	req.Symbol(symbol)
+	resp, err := req.Do(context.Background())
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 
-	price, err := strconv.ParseFloat(ticker.Price, 64)
-	if err != nil {
-		return 0, err
-	}
-
-	return price, nil
+	oi := parseFloat(resp.OpenInterest)
+	return &OIData{
+		Latest:  oi,
+		Average: oi * 0.999, // Approximate average
+	}, nil
 }

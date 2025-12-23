@@ -612,10 +612,10 @@ func (e *DebateEngine) getParticipantVote(
 	// If no valid decisions, create a default one with session symbol
 	if primaryDecision == nil && session.Symbol != "" {
 		primaryDecision = &store.DebateDecision{
-			Action:     "hold",
-			Symbol:     session.Symbol,
-			Confidence: 50,
-			Leverage:   5,
+			Action:      "hold",
+			Symbol:      session.Symbol,
+			Confidence:  50,
+			Leverage:    5,
 			PositionPct: 0.2,
 		}
 		decisions = []*store.DebateDecision{primaryDecision}
@@ -953,9 +953,9 @@ func (e *DebateEngine) ExecuteConsensus(sessionID string, executor TraderExecuto
 	}
 
 	// Get current market price
-	marketData, err := market.Get(session.Symbol)
+	fundingData, err := market.GetFundingData(session.Symbol)
 	if err != nil {
-		return fmt.Errorf("failed to get market data: %w", err)
+		return fmt.Errorf("failed to get funding data: %w", err)
 	}
 
 	// Get account balance
@@ -997,7 +997,7 @@ func (e *DebateEngine) ExecuteConsensus(sessionID string, executor TraderExecuto
 	}
 
 	// Calculate stop loss and take profit prices
-	currentPrice := marketData.CurrentPrice
+	currentPrice := fundingData.MarkPrice
 	var stopLossPrice, takeProfitPrice float64
 
 	if action == "open_long" {
@@ -1097,16 +1097,16 @@ func parseDecisions(response string) ([]*store.DebateDecision, int) {
 	if jsonContent != "" {
 		// Intermediate struct to handle both field naming conventions
 		type rawDecision struct {
-			Action       string  `json:"action"`
-			Symbol       string  `json:"symbol"`
-			Confidence   int     `json:"confidence"`
-			Leverage     int     `json:"leverage"`
-			PositionPct  float64 `json:"position_pct"`
-			StopLoss     float64 `json:"stop_loss"`
-			TakeProfit   float64 `json:"take_profit"`
-			StopLossPct  float64 `json:"stop_loss_pct"`  // Alternative field name
+			Action        string  `json:"action"`
+			Symbol        string  `json:"symbol"`
+			Confidence    int     `json:"confidence"`
+			Leverage      int     `json:"leverage"`
+			PositionPct   float64 `json:"position_pct"`
+			StopLoss      float64 `json:"stop_loss"`
+			TakeProfit    float64 `json:"take_profit"`
+			StopLossPct   float64 `json:"stop_loss_pct"`   // Alternative field name
 			TakeProfitPct float64 `json:"take_profit_pct"` // Alternative field name
-			Reasoning    string  `json:"reasoning"`
+			Reasoning     string  `json:"reasoning"`
 		}
 
 		convertRawDecision := func(r *rawDecision) *store.DebateDecision {

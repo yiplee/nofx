@@ -119,7 +119,7 @@ type Context struct {
 	MultiTFMarket   map[string]map[string]*market.Data `json:"-"`
 	OITopDataMap    map[string]*OITopData              `json:"-"`
 	QuantDataMap    map[string]*QuantData              `json:"-"`
-	OIRankingData   *provider.OIRankingData                `json:"-"` // Market-wide OI ranking data
+	OIRankingData   *provider.OIRankingData            `json:"-"` // Market-wide OI ranking data
 	BTCETHLeverage  int                                `json:"-"`
 	AltcoinLeverage int                                `json:"-"`
 	Timeframes      []string                           `json:"-"`
@@ -194,7 +194,9 @@ type StrategyEngine struct {
 
 // NewStrategyEngine creates strategy execution engine
 func NewStrategyEngine(config *store.StrategyConfig) *StrategyEngine {
-	return &StrategyEngine{config: config}
+	return &StrategyEngine{
+		config: config,
+	}
 }
 
 // GetRiskControlConfig gets risk control configuration
@@ -503,7 +505,8 @@ func (e *StrategyEngine) getOITopCoins(limit int) ([]CandidateCoin, error) {
 
 // FetchMarketData fetches market data based on strategy configuration
 func (e *StrategyEngine) FetchMarketData(symbol string) (*market.Data, error) {
-	return market.Get(symbol)
+	// return market.Get(symbol)
+	panic("not implemented")
 }
 
 // FetchExternalData fetches external data sources

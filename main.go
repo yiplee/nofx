@@ -8,7 +8,6 @@ import (
 	"nofx/crypto"
 	"nofx/logger"
 	"nofx/manager"
-	"nofx/market"
 	"nofx/mcp"
 	"nofx/store"
 	"nofx/trader"
@@ -16,7 +15,6 @@ import (
 	"os/signal"
 	"path/filepath"
 	"syscall"
-	"time"
 
 	"github.com/joho/godotenv"
 )
@@ -95,13 +93,6 @@ func main() {
 	// Set JWT secret
 	auth.SetJWTSecret(cfg.JWTSecret)
 	logger.Info("🔑 JWT secret configured")
-
-	// Start WebSocket market monitor FIRST (before loading traders that may need market data)
-	// This ensures WSMonitorCli is initialized before any trader tries to access it
-	go market.NewWSMonitor(150).Start(nil)
-	logger.Info("📊 WebSocket market monitor started")
-	// Give WebSocket monitor time to initialize
-	time.Sleep(500 * time.Millisecond)
 
 	// Create TraderManager and BacktestManager
 	traderManager := manager.NewTraderManager()

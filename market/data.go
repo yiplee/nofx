@@ -1,116 +1,13 @@
 package market
 
 import (
-	"encoding/json"
 	"fmt"
-	"io"
-	"nofx/logger"
 	"math"
+	"nofx/logger"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 )
-
-// FundingRateCache is the funding rate cache structure
-// Binance Funding Rate only updates every 8 hours, using 1-hour cache can significantly reduce API calls
-type FundingRateCache struct {
-	Rate      float64
-	UpdatedAt time.Time
-}
-
-var (
-	fundingRateMap sync.Map // map[string]*FundingRateCache
-	frCacheTTL     = 1 * time.Hour
-)
-
-// Get retrieves market data for the specified token
-func Get(symbol string) (*Data, error) {
-	var klines3m, klines4h []Kline
-	var err error
-	// Normalize symbol
-	symbol = Normalize(symbol)
-	// Get 3-minute K-line data (latest 10)
-	klines3m, err = WSMonitorCli.GetCurrentKlines(symbol, "3m") // Get more for calculation
-	if err != nil {
-		return nil, fmt.Errorf("Failed to get 3-minute K-line: %v", err)
-	}
-
-	// Data staleness detection: Prevent DOGEUSDT-style price freeze issues
-	if isStaleData(klines3m, symbol) {
-		logger.Infof("⚠️  WARNING: %s detected stale data (consecutive price freeze), skipping symbol", symbol)
-		return nil, fmt.Errorf("%s data is stale, possible cache failure", symbol)
-	}
-
-	// Get 4-hour K-line data (latest 10)
-	klines4h, err = WSMonitorCli.GetCurrentKlines(symbol, "4h") // Get more for indicator calculation
-	if err != nil {
-		return nil, fmt.Errorf("Failed to get 4-hour K-line: %v", err)
-	}
-
-	// Check if data is empty
-	if len(klines3m) == 0 {
-		return nil, fmt.Errorf("3-minute K-line data is empty")
-	}
-	if len(klines4h) == 0 {
-		return nil, fmt.Errorf("4-hour K-line data is empty")
-	}
-
-	// Calculate current indicators (based on 3-minute latest data)
-	currentPrice := klines3m[len(klines3m)-1].Close
-	currentEMA20 := calculateEMA(klines3m, 20)
-	currentMACD := calculateMACD(klines3m)
-	currentRSI7 := calculateRSI(klines3m, 7)
-
-	// Calculate price change percentage
-	// 1-hour price change = price from 20 3-minute K-lines ago
-	priceChange1h := 0.0
-	if len(klines3m) >= 21 { // Need at least 21 K-lines (current + 20 previous)
-		price1hAgo := klines3m[len(klines3m)-21].Close
-		if price1hAgo > 0 {
-			priceChange1h = ((currentPrice - price1hAgo) / price1hAgo) * 100
-		}
-	}
-
-	// 4-hour price change = price from 1 4-hour K-line ago
-	priceChange4h := 0.0
-	if len(klines4h) >= 2 {
-		price4hAgo := klines4h[len(klines4h)-2].Close
-		if price4hAgo > 0 {
-			priceChange4h = ((currentPrice - price4hAgo) / price4hAgo) * 100
-		}
-	}
-
-	// Get OI data
-	oiData, err := getOpenInterestData(symbol)
-	if err != nil {
-		// OI failure doesn't affect overall result, use default values
-		oiData = &OIData{Latest: 0, Average: 0}
-	}
-
-	// Get Funding Rate
-	fundingRate, _ := getFundingRate(symbol)
-
-	// Calculate intraday series data
-	intradayData := calculateIntradaySeries(klines3m)
-
-	// Calculate longer-term data
-	longerTermData := calculateLongerTermData(klines4h)
-
-	return &Data{
-		Symbol:            symbol,
-		CurrentPrice:      currentPrice,
-		PriceChange1h:     priceChange1h,
-		PriceChange4h:     priceChange4h,
-		CurrentEMA20:      currentEMA20,
-		CurrentMACD:       currentMACD,
-		CurrentRSI7:       currentRSI7,
-		OpenInterest:      oiData,
-		FundingRate:       fundingRate,
-		IntradaySeries:    intradayData,
-		LongerTermContext: longerTermData,
-	}, nil
-}
 
 // GetWithTimeframes retrieves market data for specified multiple timeframes
 // timeframes: list of timeframes, e.g. ["5m", "15m", "1h", "4h"]
@@ -146,7 +43,12 @@ func GetWithTimeframes(symbol string, timeframes []string, primaryTimeframe stri
 
 	// Get K-line data for each timeframe
 	for _, tf := range timeframes {
-		klines, err := WSMonitorCli.GetCurrentKlines(symbol, tf)
+		// Use count if specified, otherwise default to 100
+		limit := count
+		if limit <= 0 {
+			limit = 100
+		}
+		klines, err := sharedAPIClient.GetKlines(symbol, tf, limit)
 		if err != nil {
 			logger.Infof("⚠️ Failed to get %s %s K-line: %v", symbol, tf, err)
 			continue
@@ -185,17 +87,24 @@ func GetWithTimeframes(symbol string, timeframes []string, primaryTimeframe stri
 	currentRSI7 := calculateRSI(primaryKlines, 7)
 
 	// Calculate price changes
-	priceChange1h := calculatePriceChangeByBars(primaryKlines, primaryTimeframe, 60) // 1 hour
+	priceChange1h := calculatePriceChangeByBars(primaryKlines, primaryTimeframe, 60)  // 1 hour
 	priceChange4h := calculatePriceChangeByBars(primaryKlines, primaryTimeframe, 240) // 4 hours
 
 	// Get OI data
-	oiData, err := getOpenInterestData(symbol)
+	oiData, err := sharedAPIClient.GetOpenInterestData(symbol)
 	if err != nil {
 		oiData = &OIData{Latest: 0, Average: 0}
 	}
 
 	// Get Funding Rate
-	fundingRate, _ := getFundingRate(symbol)
+	fundingData, err := sharedAPIClient.GetFundingData(symbol)
+	if err != nil {
+		fundingData = &FundingData{
+			Symbol:      symbol,
+			FundingRate: 0,
+			MarkPrice:   0,
+		}
+	}
 
 	return &Data{
 		Symbol:        symbol,
@@ -206,7 +115,7 @@ func GetWithTimeframes(symbol string, timeframes []string, primaryTimeframe stri
 		CurrentMACD:   currentMACD,
 		CurrentRSI7:   currentRSI7,
 		OpenInterest:  oiData,
-		FundingRate:   fundingRate,
+		FundingRate:   fundingData.FundingRate,
 		TimeframeData: timeframeData,
 	}, nil
 }
@@ -233,11 +142,7 @@ func calculateTimeframeSeries(klines []Kline, timeframe string, count int) *Time
 	}
 
 	// Get latest N data points based on count from config
-	start := len(klines) - count
-	if start < 0 {
-		start = 0
-	}
-
+	start := max(0, len(klines)-count)
 	for i := start; i < len(klines); i++ {
 		// Store full OHLCV kline data
 		data.Klines = append(data.Klines, KlineBar{
@@ -371,7 +276,7 @@ func calculateEMA(klines []Kline, period int) float64 {
 
 	// Calculate SMA as initial EMA
 	sum := 0.0
-	for i := 0; i < period; i++ {
+	for i := range period {
 		sum += klines[i].Close
 	}
 	ema := sum / float64(period)
@@ -603,162 +508,76 @@ func calculateLongerTermData(klines []Kline) *LongerTermData {
 	return data
 }
 
-// getOpenInterestData retrieves OI data
-func getOpenInterestData(symbol string) (*OIData, error) {
-	url := fmt.Sprintf("https://fapi.binance.com/fapi/v1/openInterest?symbol=%s", symbol)
-
-	apiClient := NewAPIClient()
-	resp, err := apiClient.client.Get(url)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	var result struct {
-		OpenInterest string `json:"openInterest"`
-		Symbol       string `json:"symbol"`
-		Time         int64  `json:"time"`
-	}
-
-	if err := json.Unmarshal(body, &result); err != nil {
-		return nil, err
-	}
-
-	oi, _ := strconv.ParseFloat(result.OpenInterest, 64)
-
-	return &OIData{
-		Latest:  oi,
-		Average: oi * 0.999, // Approximate average
-	}, nil
-}
-
-// getFundingRate retrieves funding rate (optimized: uses 1-hour cache)
-func getFundingRate(symbol string) (float64, error) {
-	// Check cache (1-hour validity)
-	// Funding Rate only updates every 8 hours, 1-hour cache is very reasonable
-	if cached, ok := fundingRateMap.Load(symbol); ok {
-		cache := cached.(*FundingRateCache)
-		if time.Since(cache.UpdatedAt) < frCacheTTL {
-			// Cache hit, return directly
-			return cache.Rate, nil
-		}
-	}
-
-	// Cache expired or doesn't exist, call API
-	url := fmt.Sprintf("https://fapi.binance.com/fapi/v1/premiumIndex?symbol=%s", symbol)
-
-	apiClient := NewAPIClient()
-	resp, err := apiClient.client.Get(url)
-	if err != nil {
-		return 0, err
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return 0, err
-	}
-
-	var result struct {
-		Symbol          string `json:"symbol"`
-		MarkPrice       string `json:"markPrice"`
-		IndexPrice      string `json:"indexPrice"`
-		LastFundingRate string `json:"lastFundingRate"`
-		NextFundingTime int64  `json:"nextFundingTime"`
-		InterestRate    string `json:"interestRate"`
-		Time            int64  `json:"time"`
-	}
-
-	if err := json.Unmarshal(body, &result); err != nil {
-		return 0, err
-	}
-
-	rate, _ := strconv.ParseFloat(result.LastFundingRate, 64)
-
-	// Update cache
-	fundingRateMap.Store(symbol, &FundingRateCache{
-		Rate:      rate,
-		UpdatedAt: time.Now(),
-	})
-
-	return rate, nil
-}
-
 // Format formats and outputs market data
 func Format(data *Data) string {
 	var sb strings.Builder
 
 	// Format price with dynamic precision
 	priceStr := formatPriceWithDynamicPrecision(data.CurrentPrice)
-	sb.WriteString(fmt.Sprintf("current_price = %s, current_ema20 = %.3f, current_macd = %.3f, current_rsi (7 period) = %.3f\n\n",
-		priceStr, data.CurrentEMA20, data.CurrentMACD, data.CurrentRSI7))
+	fmt.Fprintf(&sb, "current_price = %s, current_ema20 = %.3f, current_macd = %.3f, current_rsi (7 period) = %.3f\n\n",
+		priceStr, data.CurrentEMA20, data.CurrentMACD, data.CurrentRSI7)
 
-	sb.WriteString(fmt.Sprintf("In addition, here is the latest %s open interest and funding rate for perps:\n\n",
-		data.Symbol))
+	fmt.Fprintf(&sb, "In addition, here is the latest %s open interest and funding rate for perps:\n\n",
+		data.Symbol)
 
 	if data.OpenInterest != nil {
 		// Format OI data with dynamic precision
 		oiLatestStr := formatPriceWithDynamicPrecision(data.OpenInterest.Latest)
 		oiAverageStr := formatPriceWithDynamicPrecision(data.OpenInterest.Average)
-		sb.WriteString(fmt.Sprintf("Open Interest: Latest: %s Average: %s\n\n",
-			oiLatestStr, oiAverageStr))
+		fmt.Fprintf(&sb, "Open Interest: Latest: %s Average: %s\n\n",
+			oiLatestStr, oiAverageStr)
 	}
 
-	sb.WriteString(fmt.Sprintf("Funding Rate: %.2e\n\n", data.FundingRate))
+	fmt.Fprintf(&sb, "Funding Rate: %.2e\n\n", data.FundingRate)
 
 	if data.IntradaySeries != nil {
 		sb.WriteString("Intraday series (3‑minute intervals, oldest → latest):\n\n")
 
 		if len(data.IntradaySeries.MidPrices) > 0 {
-			sb.WriteString(fmt.Sprintf("Mid prices: %s\n\n", formatFloatSlice(data.IntradaySeries.MidPrices)))
+			fmt.Fprintf(&sb, "Mid prices: %s\n\n", formatFloatSlice(data.IntradaySeries.MidPrices))
 		}
 
 		if len(data.IntradaySeries.EMA20Values) > 0 {
-			sb.WriteString(fmt.Sprintf("EMA indicators (20‑period): %s\n\n", formatFloatSlice(data.IntradaySeries.EMA20Values)))
+			fmt.Fprintf(&sb, "EMA indicators (20‑period): %s\n\n", formatFloatSlice(data.IntradaySeries.EMA20Values))
 		}
 
 		if len(data.IntradaySeries.MACDValues) > 0 {
-			sb.WriteString(fmt.Sprintf("MACD indicators: %s\n\n", formatFloatSlice(data.IntradaySeries.MACDValues)))
+			fmt.Fprintf(&sb, "MACD indicators: %s\n\n", formatFloatSlice(data.IntradaySeries.MACDValues))
 		}
 
 		if len(data.IntradaySeries.RSI7Values) > 0 {
-			sb.WriteString(fmt.Sprintf("RSI indicators (7‑Period): %s\n\n", formatFloatSlice(data.IntradaySeries.RSI7Values)))
+			fmt.Fprintf(&sb, "RSI indicators (7‑Period): %s\n\n", formatFloatSlice(data.IntradaySeries.RSI7Values))
 		}
 
 		if len(data.IntradaySeries.RSI14Values) > 0 {
-			sb.WriteString(fmt.Sprintf("RSI indicators (14‑Period): %s\n\n", formatFloatSlice(data.IntradaySeries.RSI14Values)))
+			fmt.Fprintf(&sb, "RSI indicators (14‑Period): %s\n\n", formatFloatSlice(data.IntradaySeries.RSI14Values))
 		}
 
 		if len(data.IntradaySeries.Volume) > 0 {
-			sb.WriteString(fmt.Sprintf("Volume: %s\n\n", formatFloatSlice(data.IntradaySeries.Volume)))
+			fmt.Fprintf(&sb, "Volume: %s\n\n", formatFloatSlice(data.IntradaySeries.Volume))
 		}
 
-		sb.WriteString(fmt.Sprintf("3m ATR (14‑period): %.3f\n\n", data.IntradaySeries.ATR14))
+		fmt.Fprintf(&sb, "3m ATR (14‑period): %.3f\n\n", data.IntradaySeries.ATR14)
 	}
 
 	if data.LongerTermContext != nil {
 		sb.WriteString("Longer‑term context (4‑hour timeframe):\n\n")
 
-		sb.WriteString(fmt.Sprintf("20‑Period EMA: %.3f vs. 50‑Period EMA: %.3f\n\n",
-			data.LongerTermContext.EMA20, data.LongerTermContext.EMA50))
+		fmt.Fprintf(&sb, "20‑Period EMA: %.3f vs. 50‑Period EMA: %.3f\n\n",
+			data.LongerTermContext.EMA20, data.LongerTermContext.EMA50)
 
-		sb.WriteString(fmt.Sprintf("3‑Period ATR: %.3f vs. 14‑Period ATR: %.3f\n\n",
-			data.LongerTermContext.ATR3, data.LongerTermContext.ATR14))
+		fmt.Fprintf(&sb, "3‑Period ATR: %.3f vs. 14‑Period ATR: %.3f\n\n",
+			data.LongerTermContext.ATR3, data.LongerTermContext.ATR14)
 
-		sb.WriteString(fmt.Sprintf("Current Volume: %.3f vs. Average Volume: %.3f\n\n",
-			data.LongerTermContext.CurrentVolume, data.LongerTermContext.AverageVolume))
+		fmt.Fprintf(&sb, "Current Volume: %.3f vs. Average Volume: %.3f\n\n",
+			data.LongerTermContext.CurrentVolume, data.LongerTermContext.AverageVolume)
 
 		if len(data.LongerTermContext.MACDValues) > 0 {
-			sb.WriteString(fmt.Sprintf("MACD indicators: %s\n\n", formatFloatSlice(data.LongerTermContext.MACDValues)))
+			fmt.Fprintf(&sb, "MACD indicators: %s\n\n", formatFloatSlice(data.LongerTermContext.MACDValues))
 		}
 
 		if len(data.LongerTermContext.RSI14Values) > 0 {
-			sb.WriteString(fmt.Sprintf("RSI indicators (14‑Period): %s\n\n", formatFloatSlice(data.LongerTermContext.RSI14Values)))
+			fmt.Fprintf(&sb, "RSI indicators (14‑Period): %s\n\n", formatFloatSlice(data.LongerTermContext.RSI14Values))
 		}
 	}
 
@@ -768,7 +587,7 @@ func Format(data *Data) string {
 		timeframeOrder := []string{"1m", "3m", "5m", "15m", "30m", "1h", "2h", "4h", "6h", "8h", "12h", "1d", "3d", "1w"}
 		for _, tf := range timeframeOrder {
 			if tfData, ok := data.TimeframeData[tf]; ok {
-				sb.WriteString(fmt.Sprintf("=== %s Timeframe ===\n\n", strings.ToUpper(tf)))
+				fmt.Fprintf(&sb, "=== %s Timeframe ===\n\n", strings.ToUpper(tf))
 				formatTimeframeData(&sb, tfData)
 			}
 		}
@@ -789,41 +608,41 @@ func formatTimeframeData(sb *strings.Builder, data *TimeframeSeriesData) {
 			if i == len(data.Klines)-1 {
 				marker = "  <- current"
 			}
-			sb.WriteString(fmt.Sprintf("%-14s %-9.4f %-9.4f %-9.4f %-9.4f %-12.2f%s\n",
-				timeStr, k.Open, k.High, k.Low, k.Close, k.Volume, marker))
+			fmt.Fprintf(sb, "%-14s %-9.4f %-9.4f %-9.4f %-9.4f %-12.2f%s\n",
+				timeStr, k.Open, k.High, k.Low, k.Close, k.Volume, marker)
 		}
 		sb.WriteString("\n")
 	} else if len(data.MidPrices) > 0 {
 		// Fallback to old format for backward compatibility
-		sb.WriteString(fmt.Sprintf("Mid prices: %s\n\n", formatFloatSlice(data.MidPrices)))
+		fmt.Fprintf(sb, "Mid prices: %s\n\n", formatFloatSlice(data.MidPrices))
 		if len(data.Volume) > 0 {
-			sb.WriteString(fmt.Sprintf("Volume: %s\n\n", formatFloatSlice(data.Volume)))
+			fmt.Fprintf(sb, "Volume: %s\n\n", formatFloatSlice(data.Volume))
 		}
 	}
 
 	// Technical indicators
 	if len(data.EMA20Values) > 0 {
-		sb.WriteString(fmt.Sprintf("EMA20: %s\n", formatFloatSlice(data.EMA20Values)))
+		fmt.Fprintf(sb, "EMA20: %s\n", formatFloatSlice(data.EMA20Values))
 	}
 
 	if len(data.EMA50Values) > 0 {
-		sb.WriteString(fmt.Sprintf("EMA50: %s\n", formatFloatSlice(data.EMA50Values)))
+		fmt.Fprintf(sb, "EMA50: %s\n", formatFloatSlice(data.EMA50Values))
 	}
 
 	if len(data.MACDValues) > 0 {
-		sb.WriteString(fmt.Sprintf("MACD: %s\n", formatFloatSlice(data.MACDValues)))
+		fmt.Fprintf(sb, "MACD: %s\n", formatFloatSlice(data.MACDValues))
 	}
 
 	if len(data.RSI7Values) > 0 {
-		sb.WriteString(fmt.Sprintf("RSI7: %s\n", formatFloatSlice(data.RSI7Values)))
+		fmt.Fprintf(sb, "RSI7: %s\n", formatFloatSlice(data.RSI7Values))
 	}
 
 	if len(data.RSI14Values) > 0 {
-		sb.WriteString(fmt.Sprintf("RSI14: %s\n", formatFloatSlice(data.RSI14Values)))
+		fmt.Fprintf(sb, "RSI14: %s\n", formatFloatSlice(data.RSI14Values))
 	}
 
 	if data.ATR14 > 0 {
-		sb.WriteString(fmt.Sprintf("ATR14: %.4f\n", data.ATR14))
+		fmt.Fprintf(sb, "ATR14: %.4f\n", data.ATR14)
 	}
 
 	sb.WriteString("\n")
@@ -876,22 +695,6 @@ func Normalize(symbol string) string {
 		return symbol
 	}
 	return symbol + "USDT"
-}
-
-// parseFloat parses float value
-func parseFloat(v interface{}) (float64, error) {
-	switch val := v.(type) {
-	case string:
-		return strconv.ParseFloat(val, 64)
-	case float64:
-		return val, nil
-	case int:
-		return float64(val), nil
-	case int64:
-		return float64(val), nil
-	default:
-		return 0, fmt.Errorf("unsupported type: %T", v)
-	}
 }
 
 // BuildDataFromKlines constructs market data snapshot from preloaded K-line series (for backtesting/simulation).
@@ -985,4 +788,12 @@ func isStaleData(klines []Kline, symbol string) bool {
 	// Price frozen but has volume: might be extremely low volatility market, allow but log warning
 	logger.Infof("⚠️  %s detected extreme price stability (no fluctuation for %d consecutive periods), but volume is normal", symbol, stalePriceThreshold)
 	return false
+}
+
+func parseFloat(s string) float64 {
+	f, err := strconv.ParseFloat(s, 64)
+	if err != nil {
+		panic(err)
+	}
+	return f
 }

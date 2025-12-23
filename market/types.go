@@ -1,7 +1,5 @@
 package market
 
-import "time"
-
 // Data market data structure
 type Data struct {
 	Symbol            string
@@ -45,6 +43,12 @@ type TimeframeSeriesData struct {
 	BOLLUpper  []float64 `json:"boll_upper"`  // Upper band
 	BOLLMiddle []float64 `json:"boll_middle"` // Middle band (SMA)
 	BOLLLower  []float64 `json:"boll_lower"`  // Lower band
+}
+
+type FundingData struct {
+	Symbol      string
+	FundingRate float64
+	MarkPrice   float64
 }
 
 // OIData Open Interest data
@@ -105,8 +109,6 @@ type Kline struct {
 	TakerBuyQuoteVolume float64 `json:"takerBuyQuoteVolume"`
 }
 
-type KlineResponse []interface{}
-
 type PriceTicker struct {
 	Symbol string `json:"symbol"`
 	Price  string `json:"price"`
@@ -118,72 +120,4 @@ type Ticker24hr struct {
 	PriceChangePercent string `json:"priceChangePercent"`
 	Volume             string `json:"volume"`
 	QuoteVolume        string `json:"quoteVolume"`
-}
-
-// SymbolFeatures feature data structure
-type SymbolFeatures struct {
-	Symbol           string    `json:"symbol"`
-	Timestamp        time.Time `json:"timestamp"`
-	Price            float64   `json:"price"`
-	PriceChange15Min float64   `json:"price_change_15min"`
-	PriceChange1H    float64   `json:"price_change_1h"`
-	PriceChange4H    float64   `json:"price_change_4h"`
-	Volume           float64   `json:"volume"`
-	VolumeRatio5     float64   `json:"volume_ratio_5"`
-	VolumeRatio20    float64   `json:"volume_ratio_20"`
-	VolumeTrend      float64   `json:"volume_trend"`
-	RSI14            float64   `json:"rsi_14"`
-	SMA5             float64   `json:"sma_5"`
-	SMA10            float64   `json:"sma_10"`
-	SMA20            float64   `json:"sma_20"`
-	HighLowRatio     float64   `json:"high_low_ratio"`
-	Volatility20     float64   `json:"volatility_20"`
-	PositionInRange  float64   `json:"position_in_range"`
-}
-
-// Alert alert data structure
-type Alert struct {
-	Type      string    `json:"type"`
-	Symbol    string    `json:"symbol"`
-	Value     float64   `json:"value"`
-	Threshold float64   `json:"threshold"`
-	Message   string    `json:"message"`
-	Timestamp time.Time `json:"timestamp"`
-}
-
-type Config struct {
-	AlertThresholds AlertThresholds `json:"alert_thresholds"`
-	UpdateInterval  int             `json:"update_interval"` // seconds
-	CleanupConfig   CleanupConfig   `json:"cleanup_config"`
-}
-
-type AlertThresholds struct {
-	VolumeSpike      float64 `json:"volume_spike"`
-	PriceChange15Min float64 `json:"price_change_15min"`
-	VolumeTrend      float64 `json:"volume_trend"`
-	RSIOverbought    float64 `json:"rsi_overbought"`
-	RSIOversold      float64 `json:"rsi_oversold"`
-}
-type CleanupConfig struct {
-	InactiveTimeout   time.Duration `json:"inactive_timeout"`    // Inactive timeout duration
-	MinScoreThreshold float64       `json:"min_score_threshold"` // Minimum score threshold
-	NoAlertTimeout    time.Duration `json:"no_alert_timeout"`    // No alert timeout duration
-	CheckInterval     time.Duration `json:"check_interval"`      // Check interval
-}
-
-var config = Config{
-	AlertThresholds: AlertThresholds{
-		VolumeSpike:      3.0,
-		PriceChange15Min: 0.05,
-		VolumeTrend:      2.0,
-		RSIOverbought:    70,
-		RSIOversold:      30,
-	},
-	CleanupConfig: CleanupConfig{
-		InactiveTimeout:   30 * time.Minute,
-		MinScoreThreshold: 15.0,
-		NoAlertTimeout:    20 * time.Minute,
-		CheckInterval:     5 * time.Minute,
-	},
-	UpdateInterval: 60, // 1 minute
 }

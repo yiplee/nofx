@@ -338,8 +338,8 @@ func (s *AutoTraderTestSuite) TestGetCandidateCoins() {
 
 func (s *AutoTraderTestSuite) TestBuildTradingContext() {
 	// Mock market.Get
-	s.patches.ApplyFunc(market.Get, func(symbol string) (*market.Data, error) {
-		return &market.Data{Symbol: symbol, CurrentPrice: 50000.0}, nil
+	s.patches.ApplyFunc(market.GetFundingData, func(symbol string) (*market.FundingData, error) {
+		return &market.FundingData{Symbol: symbol, MarkPrice: 50000.0}, nil
 	})
 
 	// Create a real strategy engine with test config
@@ -443,8 +443,8 @@ func (s *AutoTraderTestSuite) TestExecuteOpenPosition() {
 	for _, tt := range tests {
 		time.Sleep(time.Millisecond)
 		s.Run(tt.name, func() {
-			s.patches.ApplyFunc(market.Get, func(symbol string) (*market.Data, error) {
-				return &market.Data{Symbol: symbol, CurrentPrice: 50000.0}, nil
+			s.patches.ApplyFunc(market.GetFundingData, func(symbol string) (*market.FundingData, error) {
+				return &market.FundingData{Symbol: symbol, MarkPrice: 50000.0}, nil
 			})
 
 			s.mockTrader.balance["availableBalance"] = tt.availBalance
@@ -508,8 +508,8 @@ func (s *AutoTraderTestSuite) TestExecuteClosePosition() {
 	for _, tt := range tests {
 		time.Sleep(time.Millisecond)
 		s.Run(tt.name, func() {
-			s.patches.ApplyFunc(market.Get, func(symbol string) (*market.Data, error) {
-				return &market.Data{Symbol: symbol, CurrentPrice: tt.currentPrice}, nil
+			s.patches.ApplyFunc(market.GetFundingData, func(symbol string) (*market.FundingData, error) {
+				return &market.FundingData{Symbol: symbol, MarkPrice: tt.currentPrice}, nil
 			})
 
 			decision := &decision.Decision{Action: tt.action, Symbol: "BTCUSDT"}
@@ -530,10 +530,10 @@ func (s *AutoTraderTestSuite) TestExecuteClosePosition() {
 
 func (s *AutoTraderTestSuite) TestExecuteDecisionWithRecord() {
 	// Mock market.Get
-	s.patches.ApplyFunc(market.Get, func(symbol string) (*market.Data, error) {
-		return &market.Data{
-			Symbol:       symbol,
-			CurrentPrice: 50000.0,
+	s.patches.ApplyFunc(market.GetFundingData, func(symbol string) (*market.FundingData, error) {
+		return &market.FundingData{
+			Symbol:    symbol,
+			MarkPrice: 50000.0,
 		}, nil
 	})
 
