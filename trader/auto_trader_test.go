@@ -1012,8 +1012,8 @@ func TestNextAlignedTime(t *testing.T) {
 			name:           "5 minute interval at 13:55",
 			currentTime:    time.Date(2024, 1, 1, 13, 55, 30, 0, time.UTC),
 			interval:       5 * time.Minute,
-			expectedMinute: 55, // Next should be 13:55
-			expectedHour:   13,
+			expectedMinute: 0, // Next should be 14:00
+			expectedHour:   14,
 			expectedDay:    1,
 		},
 		{
@@ -1029,7 +1029,7 @@ func TestNextAlignedTime(t *testing.T) {
 			currentTime:    time.Date(2024, 1, 1, 13, 0, 0, 0, time.UTC),
 			interval:       60 * time.Minute,
 			expectedMinute: 0, // Next should be 13:00
-			expectedHour:   13,
+			expectedHour:   14,
 			expectedDay:    1,
 		},
 		{
@@ -1044,7 +1044,7 @@ func TestNextAlignedTime(t *testing.T) {
 			name:           "3 minute interval at 13:03",
 			currentTime:    time.Date(2024, 1, 1, 13, 3, 0, 0, time.UTC),
 			interval:       3 * time.Minute,
-			expectedMinute: 3, // Next should be 13:03
+			expectedMinute: 6, // Next should be 13:06
 			expectedHour:   13,
 			expectedDay:    1,
 		},
@@ -1076,8 +1076,8 @@ func TestNextAlignedTime(t *testing.T) {
 			name:           "4 hour interval at 16:00",
 			currentTime:    time.Date(2024, 1, 1, 16, 0, 0, 0, time.UTC),
 			interval:       4 * time.Hour,
-			expectedMinute: 0, // Next should be 16:00
-			expectedHour:   16,
+			expectedMinute: 0, // Next should be 20:00
+			expectedHour:   20,
 			expectedDay:    1,
 		},
 		{
@@ -1121,14 +1121,10 @@ func TestNextAlignedTime(t *testing.T) {
 				t.Errorf("nextAlignedTime() day = %v, want %v", result.Day(), tt.expectedDay)
 			}
 
-			if result.Before(tt.currentTime.Truncate(time.Minute)) {
+			// Verify the result is in the future
+			if result.Before(tt.currentTime) || result.Equal(tt.currentTime) {
 				t.Errorf("nextAlignedTime() = %v, should be after current time %v", result, tt.currentTime)
 			}
-
-			// Verify the result is in the future
-			// if result.Before(tt.currentTime) || result.Equal(tt.currentTime) {
-			// 	t.Errorf("nextAlignedTime() = %v, should be after current time %v", result, tt.currentTime)
-			// }
 		})
 	}
 }

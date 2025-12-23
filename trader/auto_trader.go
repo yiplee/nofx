@@ -364,12 +364,7 @@ func nextAlignedTime(interval time.Duration) time.Time {
 // nextAlignedTimeFrom calculates the next wall-clock aligned time from a given start time.
 // This internal function is used for testing purposes.
 func nextAlignedTimeFrom(interval time.Duration, now time.Time) time.Time {
-	// remove seconds and nanoseconds
-	now = now.Truncate(time.Minute)
 	next := now.Truncate(interval)
-	if next.Equal(now) {
-		return next
-	}
 	return next.Add(interval)
 }
 
