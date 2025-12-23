@@ -5,7 +5,6 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
-	"nofx/hook"
 	"nofx/logger"
 	"strconv"
 	"strings"
@@ -69,10 +68,10 @@ type FuturesTrader struct {
 func NewFuturesTrader(apiKey, secretKey string, userId string) *FuturesTrader {
 	client := futures.NewClient(apiKey, secretKey)
 
-	hookRes := hook.HookExec[hook.NewBinanceTraderResult](hook.NEW_BINANCE_TRADER, userId, client)
-	if hookRes != nil && hookRes.GetResult() != nil {
-		client = hookRes.GetResult()
-	}
+	// hookRes := hook.HookExec[hook.NewBinanceTraderResult](hook.NEW_BINANCE_TRADER, userId, client)
+	// if hookRes != nil && hookRes.GetResult() != nil {
+	// 	client = hookRes.GetResult()
+	// }
 
 	// Sync time to avoid "Timestamp ahead" error
 	syncBinanceServerTime(client)
