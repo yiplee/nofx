@@ -71,14 +71,6 @@ type CandidateCoin struct {
 	Sources []string `json:"sources"` // Sources: "ai500" and/or "oi_top"
 }
 
-// OITopData open interest growth top data (for AI decision reference)
-type OITopData struct {
-	Rank              int     // OI Top ranking
-	OIDeltaPercent    float64 // Open interest change percentage (1 hour)
-	OIDeltaValue      float64 // Open interest change value
-	PriceDeltaPercent float64 // Price change percentage
-}
-
 // TradingStats trading statistics (for AI input)
 type TradingStats struct {
 	TotalTrades    int     `json:"total_trades"`     // Total number of trades (closed)
@@ -117,7 +109,6 @@ type Context struct {
 	RecentOrders    []RecentOrder                      `json:"recent_orders,omitempty"`
 	MarketDataMap   map[string]*market.Data            `json:"-"`
 	MultiTFMarket   map[string]map[string]*market.Data `json:"-"`
-	OITopDataMap    map[string]*OITopData              `json:"-"`
 	QuantDataMap    map[string]*QuantData              `json:"-"`
 	OIRankingData   *provider.OIRankingData            `json:"-"` // Market-wide OI ranking data
 	BTCETHLeverage  int                                `json:"-"`
@@ -235,22 +226,6 @@ func GetFullDecisionWithStrategy(ctx *Context, mcpClient mcp.AIClient, engine *S
 	if len(ctx.MarketDataMap) == 0 {
 		if err := fetchMarketDataWithStrategy(ctx, engine); err != nil {
 			return nil, fmt.Errorf("failed to fetch market data: %w", err)
-		}
-	}
-
-	// Ensure OITopDataMap is initialized
-	if ctx.OITopDataMap == nil {
-		ctx.OITopDataMap = make(map[string]*OITopData)
-		oiPositions, err := provider.GetOITopPositions()
-		if err == nil {
-			for _, pos := range oiPositions {
-				ctx.OITopDataMap[pos.Symbol] = &OITopData{
-					Rank:              pos.Rank,
-					OIDeltaPercent:    pos.OIDeltaPercent,
-					OIDeltaValue:      pos.OIDeltaValue,
-					PriceDeltaPercent: pos.PriceDeltaPercent,
-				}
-			}
 		}
 	}
 
