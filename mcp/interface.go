@@ -5,8 +5,16 @@ import (
 	"time"
 )
 
+type PromptFormat string
+
+const (
+	PromptFormatJSON  PromptFormat = "json"
+	PromptFormatPlain PromptFormat = "plain"
+)
+
 // AIClient public AI client interface (for external use)
 type AIClient interface {
+	PromptFormat() PromptFormat
 	SetAPIKey(apiKey string, customURL string, customModel string)
 	SetTimeout(timeout time.Duration)
 	CallWithMessages(systemPrompt, userPrompt string) (string, error)

@@ -113,6 +113,11 @@ func NewClient(opts ...ClientOption) AIClient {
 	return client
 }
 
+// PromptFormat returns the prompt format used by the client
+func (client *Client) PromptFormat() PromptFormat {
+	return PromptFormatPlain
+}
+
 // SetCustomAPI sets custom OpenAI-compatible API
 func (client *Client) SetAPIKey(apiKey, apiURL, customModel string) {
 	client.Provider = ProviderCustom

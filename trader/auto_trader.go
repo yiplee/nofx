@@ -187,6 +187,11 @@ func NewAutoTrader(config AutoTraderConfig, st *store.Store, userID string) (*Au
 		mcpClient.SetAPIKey(apiKey, config.CustomAPIURL, config.CustomModelName)
 		logger.Infof("🤖 [%s] Using Alibaba Cloud Qwen AI", config.Name)
 
+	case "quant":
+		mcpClient = mcp.NewQuantClientWithOptions()
+		mcpClient.SetAPIKey(config.CustomAPIKey, config.CustomAPIURL, config.CustomModelName)
+		logger.Infof("🤖 [%s] Using Quant AI", config.Name)
+
 	case "custom":
 		mcpClient = mcp.New()
 		mcpClient.SetAPIKey(config.CustomAPIKey, config.CustomAPIURL, config.CustomModelName)
@@ -751,6 +756,7 @@ func (at *AutoTrader) buildTradingContext() (*decision.Context, error) {
 
 	// 6. Build context
 	ctx := &decision.Context{
+		Format:          at.mcpClient.PromptFormat(),
 		CurrentTime:     time.Now().UTC().Format("2006-01-02 15:04:05 UTC"),
 		RuntimeMinutes:  int(time.Since(at.startTime).Minutes()),
 		CallCount:       at.callCount,
