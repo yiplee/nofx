@@ -311,11 +311,33 @@ func (s *AIModelStore) Update(userID, id string, enabled bool, apiKey, customAPI
 	return err
 }
 
-// Create creates an AI model
-func (s *AIModelStore) Create(userID, id, name, provider string, enabled bool, apiKey, customAPIURL string) error {
+// Create creates a new AI model with auto-generated ID
+func (s *AIModelStore) Create(userID, name, provider string, enabled bool, apiKey, customAPIURL, customModelName string) (string, error) {
+	// Generate unique ID: {userID}_{provider}_{timestamp}
+	modelID := fmt.Sprintf("%s_%s_%d", userID, provider, time.Now().UnixNano())
+
+	encryptedAPIKey := s.encrypt(apiKey)
 	_, err := s.db.Exec(`
-		INSERT OR IGNORE INTO ai_models (id, user_id, name, provider, enabled, api_key, custom_api_url)
-		VALUES (?, ?, ?, ?, ?, ?, ?)
-	`, id, userID, name, provider, enabled, apiKey, customAPIURL)
-	return err
+		INSERT INTO ai_models (id, user_id, name, provider, enabled, api_key, custom_api_url, custom_model_name, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+	`, modelID, userID, name, provider, enabled, encryptedAPIKey, customAPIURL, customModelName)
+	if err != nil {
+		return "", err
+	}
+	logger.Infof("✓ Created new AI model: ID=%s, Provider=%s, Name=%s", modelID, provider, name)
+	return modelID, nil
+}
+
+// Delete deletes an AI model by ID
+func (s *AIModelStore) Delete(userID, modelID string) error {
+	result, err := s.db.Exec(`DELETE FROM ai_models WHERE id = ? AND user_id = ?`, modelID, userID)
+	if err != nil {
+		return err
+	}
+	rowsAffected, _ := result.RowsAffected()
+	if rowsAffected == 0 {
+		return fmt.Errorf("model not found: %s", modelID)
+	}
+	logger.Infof("✓ Deleted AI model: ID=%s", modelID)
+	return nil
 }

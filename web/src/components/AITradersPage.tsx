@@ -152,7 +152,6 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
   const [editingTrader, setEditingTrader] = useState<any>(null)
   const [allModels, setAllModels] = useState<AIModel[]>([])
   const [allExchanges, setAllExchanges] = useState<Exchange[]>([])
-  const [supportedModels, setSupportedModels] = useState<AIModel[]>([])
   const [visibleTraderAddresses, setVisibleTraderAddresses] = useState<Set<string>>(new Set())
   const [visibleExchangeAddresses, setVisibleExchangeAddresses] = useState<Set<string>>(new Set())
   const [copiedId, setCopiedId] = useState<string | null>(null)
@@ -204,13 +203,7 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
   useEffect(() => {
     const loadConfigs = async () => {
       if (!user || !token) {
-        // 未登录时只加载公开的支持模型
-        try {
-          const supportedModels = await api.getSupportedModels()
-          setSupportedModels(supportedModels)
-        } catch (err) {
-          console.error('Failed to load supported configs:', err)
-        }
+        // 未登录时无需加载配置
         return
       }
 
@@ -218,15 +211,12 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
         const [
           modelConfigs,
           exchangeConfigs,
-          supportedModels,
         ] = await Promise.all([
           api.getModelConfigs(),
           api.getExchangeConfigs(),
-          api.getSupportedModels(),
         ])
         setAllModels(modelConfigs)
         setAllExchanges(exchangeConfigs)
-        setSupportedModels(supportedModels)
       } catch (error) {
         console.error('Failed to load configs:', error)
       }
@@ -492,169 +482,74 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
     }
   }
 
-  // 通用删除配置处理函数
-  const handleDeleteConfig = async <T extends { id: string }>(config: {
-    id: string
-    type: 'model' | 'exchange'
-    checkInUse: (id: string) => boolean
-    getUsingTraders: (id: string) => any[]
-    cannotDeleteKey: string
-    confirmDeleteKey: string
-    allItems: T[] | undefined
-    clearFields: (item: T) => T
-    buildRequest: (items: T[]) => any
-    updateApi: (request: any) => Promise<void>
-    refreshApi: () => Promise<T[]>
-    setItems: (items: T[]) => void
-    closeModal: () => void
-    errorKey: string
-  }) => {
+  const handleDeleteModelConfig = async (modelId: string) => {
     // 检查是否有交易员正在使用
-    if (config.checkInUse(config.id)) {
-      const usingTraders = config.getUsingTraders(config.id)
+    if (isModelUsedByAnyTrader(modelId)) {
+      const usingTraders = getTradersUsingModel(modelId)
       const traderNames = usingTraders.map((t) => t.trader_name).join(', ')
       toast.error(
-        `${t(config.cannotDeleteKey, language)} · ${t('tradersUsing', language)}: ${traderNames} · ${t('pleaseDeleteTradersFirst', language)}`
+        `${t('cannotDeleteModelInUse', language)} · ${t('tradersUsing', language)}: ${traderNames} · ${t('pleaseDeleteTradersFirst', language)}`
       )
       return
     }
 
-    {
-      const ok = await confirmToast(t(config.confirmDeleteKey, language))
-      if (!ok) return
-    }
+    const ok = await confirmToast(t('confirmDeleteModel', language))
+    if (!ok) return
 
     try {
-      const updatedItems =
-        config.allItems?.map((item) =>
-          item.id === config.id ? config.clearFields(item) : item
-        ) || []
-
-      const request = config.buildRequest(updatedItems)
-      await toast.promise(config.updateApi(request), {
-        loading: '正在更新配置…',
-        success: '配置已更新',
-        error: '更新配置失败',
+      await toast.promise(api.deleteModel(modelId), {
+        loading: language === 'zh' ? '正在删除模型…' : 'Deleting model...',
+        success: language === 'zh' ? '模型已删除' : 'Model deleted',
+        error: language === 'zh' ? '删除模型失败' : 'Failed to delete model',
       }).unwrap()
 
       // 重新获取用户配置以确保数据同步
-      const refreshedItems = await config.refreshApi()
-      config.setItems(refreshedItems)
+      const refreshedModels = await api.getModelConfigs()
+      setAllModels(refreshedModels)
 
-      config.closeModal()
+      setShowModelModal(false)
+      setEditingModel(null)
     } catch (error) {
-      console.error(`Failed to delete ${config.type} config:`, error)
-      toast.error(t(config.errorKey, language))
+      console.error('Failed to delete model config:', error)
+      toast.error(t('deleteConfigFailed', language))
     }
   }
 
-  const handleDeleteModelConfig = async (modelId: string) => {
-    await handleDeleteConfig({
-      id: modelId,
-      type: 'model',
-      checkInUse: isModelUsedByAnyTrader,
-      getUsingTraders: getTradersUsingModel,
-      cannotDeleteKey: 'cannotDeleteModelInUse',
-      confirmDeleteKey: 'confirmDeleteModel',
-      allItems: allModels,
-      clearFields: (m) => ({
-        ...m,
-        apiKey: '',
-        customApiUrl: '',
-        customModelName: '',
-        enabled: false,
-      }),
-      buildRequest: (models) => ({
-        models: Object.fromEntries(
-          models.map((model) => [
-            model.provider,
-            {
-              enabled: model.enabled,
-              api_key: model.apiKey || '',
-              custom_api_url: model.customApiUrl || '',
-              custom_model_name: model.customModelName || '',
-            },
-          ])
-        ),
-      }),
-      updateApi: api.updateModelConfigs,
-      refreshApi: api.getModelConfigs,
-      setItems: (items) => {
-        // 使用函数式更新确保状态正确更新
-        setAllModels([...items])
-      },
-      closeModal: () => {
-        setShowModelModal(false)
-        setEditingModel(null)
-      },
-      errorKey: 'deleteConfigFailed',
-    })
-  }
-
   const handleSaveModelConfig = async (
-    modelId: string,
+    modelId: string | null,
+    provider: string,
+    displayName: string,
     apiKey: string,
     customApiUrl?: string,
     customModelName?: string
   ) => {
     try {
-      // 创建或更新用户的模型配置
-      const existingModel = allModels?.find((m) => m.id === modelId)
-      let updatedModels
-
-      // 找到要配置的模型（优先从已配置列表，其次从支持列表）
-      const modelToUpdate =
-        existingModel || supportedModels?.find((m) => m.id === modelId)
-      if (!modelToUpdate) {
-        toast.error(t('modelNotExist', language))
-        return
-      }
-
-      if (existingModel) {
-        // 更新现有配置
-        updatedModels =
-          allModels?.map((m) =>
-            m.id === modelId
-              ? {
-                ...m,
-                apiKey,
-                customApiUrl: customApiUrl || '',
-                customModelName: customModelName || '',
-                enabled: true,
-              }
-              : m
-          ) || []
-      } else {
-        // 添加新配置
-        const newModel = {
-          ...modelToUpdate,
-          apiKey,
-          customApiUrl: customApiUrl || '',
-          customModelName: customModelName || '',
+      if (modelId) {
+        // 更新现有模型
+        await toast.promise(api.updateModel(modelId, {
           enabled: true,
-        }
-        updatedModels = [...(allModels || []), newModel]
+          api_key: apiKey || undefined,
+          custom_api_url: customApiUrl || '',
+          custom_model_name: customModelName || '',
+        }), {
+          loading: language === 'zh' ? '正在更新模型配置…' : 'Updating model config...',
+          success: language === 'zh' ? '模型配置已更新' : 'Model config updated',
+          error: language === 'zh' ? '更新模型配置失败' : 'Failed to update model config',
+        }).unwrap()
+      } else {
+        // 创建新模型
+        await toast.promise(api.createModel({
+          name: displayName,
+          provider: provider,
+          api_key: apiKey,
+          custom_api_url: customApiUrl || '',
+          custom_model_name: customModelName || '',
+        }), {
+          loading: language === 'zh' ? '正在创建模型…' : 'Creating model...',
+          success: language === 'zh' ? '模型已创建' : 'Model created',
+          error: language === 'zh' ? '创建模型失败' : 'Failed to create model',
+        }).unwrap()
       }
-
-      const request = {
-        models: Object.fromEntries(
-          updatedModels.map((model) => [
-            model.provider, // 使用 provider 而不是 id
-            {
-              enabled: model.enabled,
-              api_key: model.apiKey || '',
-              custom_api_url: model.customApiUrl || '',
-              custom_model_name: model.customModelName || '',
-            },
-          ])
-        ),
-      }
-
-      await toast.promise(api.updateModelConfigs(request), {
-        loading: '正在更新模型配置…',
-        success: '模型配置已更新',
-        error: '更新模型配置失败',
-      }).unwrap()
 
       // 重新获取用户配置以确保数据同步
       const refreshedModels = await api.getModelConfigs()
@@ -1463,7 +1358,6 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
       {/* Model Configuration Modal */}
       {showModelModal && (
         <ModelConfigModal
-          allModels={supportedModels}
           configuredModels={allModels}
           editingModelId={editingModel}
           onSave={handleSaveModelConfig}
@@ -1496,7 +1390,6 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
 
 // Model Configuration Modal Component
 function ModelConfigModal({
-  allModels,
   configuredModels,
   editingModelId,
   onSave,
@@ -1504,11 +1397,12 @@ function ModelConfigModal({
   onClose,
   language,
 }: {
-  allModels: AIModel[]
   configuredModels: AIModel[]
   editingModelId: string | null
   onSave: (
-    modelId: string,
+    modelId: string | null,
+    provider: string,
+    displayName: string,
     apiKey: string,
     baseUrl?: string,
     modelName?: string
@@ -1517,39 +1411,54 @@ function ModelConfigModal({
   onClose: () => void
   language: Language
 }) {
-  const [selectedModelId, setSelectedModelId] = useState(editingModelId || '')
+  const [selectedProvider, setSelectedProvider] = useState('')
+  const [displayName, setDisplayName] = useState('')
   const [apiKey, setApiKey] = useState('')
   const [baseUrl, setBaseUrl] = useState('')
   const [modelName, setModelName] = useState('')
 
-  // 获取当前编辑的模型信息 - 编辑时从已配置的模型中查找，新建时从所有支持的模型中查找
-  const selectedModel = editingModelId
-    ? configuredModels?.find((m) => m.id === selectedModelId)
-    : allModels?.find((m) => m.id === selectedModelId)
+  // 获取当前编辑的模型信息
+  const editingModel = editingModelId
+    ? configuredModels?.find((m) => m.id === editingModelId)
+    : null
 
-  // 如果是编辑现有模型，初始化API Key、Base URL和Model Name
+  // 如果是编辑现有模型，初始化所有字段
   useEffect(() => {
-    if (editingModelId && selectedModel) {
-      setApiKey(selectedModel.apiKey || '')
-      setBaseUrl(selectedModel.customApiUrl || '')
-      setModelName(selectedModel.customModelName || '')
+    if (editingModel) {
+      setSelectedProvider(editingModel.provider)
+      setDisplayName(editingModel.name)
+      setApiKey(editingModel.apiKey || '')
+      setBaseUrl(editingModel.customApiUrl || '')
+      setModelName(editingModel.customModelName || '')
     }
-  }, [editingModelId, selectedModel])
+  }, [editingModel])
+
+  // 当选择 provider 时，自动填充默认名称
+  useEffect(() => {
+    if (!editingModelId && selectedProvider) {
+      const providerInfo = AI_PROVIDER_CONFIG[selectedProvider]
+      if (providerInfo) {
+        setDisplayName(providerInfo.apiName + ' AI')
+      }
+    }
+  }, [selectedProvider, editingModelId])
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
-    if (!selectedModelId || !apiKey.trim()) return
+    if (!selectedProvider || !apiKey.trim() || !displayName.trim()) return
 
     onSave(
-      selectedModelId,
+      editingModelId,
+      selectedProvider,
+      displayName.trim(),
       apiKey.trim(),
       baseUrl.trim() || undefined,
       modelName.trim() || undefined
     )
   }
 
-  // 可选择的模型列表（所有支持的模型）
-  const availableModels = allModels || []
+  // 可选择的 provider 列表
+  const availableProviders = Object.keys(AI_PROVIDER_CONFIG)
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
@@ -1587,97 +1496,123 @@ function ModelConfigModal({
             className="space-y-4 overflow-y-auto"
             style={{ maxHeight: 'calc(100vh - 16rem)' }}
           >
-            {!editingModelId && (
-              <div>
-                <label
-                  className="block text-sm font-semibold mb-2"
-                  style={{ color: '#EAECEF' }}
-                >
-                  {t('selectModel', language)}
-                </label>
-                <select
-                  value={selectedModelId}
-                  onChange={(e) => setSelectedModelId(e.target.value)}
-                  className="w-full px-3 py-2 rounded"
-                  style={{
-                    background: '#0B0E11',
-                    border: '1px solid #2B3139',
-                    color: '#EAECEF',
-                  }}
-                  required
-                >
-                  <option value="">{t('pleaseSelectModel', language)}</option>
-                  {availableModels.map((model) => (
-                    <option key={model.id} value={model.id}>
-                      {getShortName(model.name)} ({model.provider})
-                    </option>
-                  ))}
-                </select>
-              </div>
-            )}
-
-            {selectedModel && (
-              <div
-                className="p-4 rounded"
-                style={{ background: '#0B0E11', border: '1px solid #2B3139' }}
+            {/* Provider Selection */}
+            <div>
+              <label
+                className="block text-sm font-semibold mb-2"
+                style={{ color: '#EAECEF' }}
               >
-                <div className="flex items-center gap-3 mb-3">
-                  <div className="w-8 h-8 flex items-center justify-center">
-                    {getModelIcon(selectedModel.provider || selectedModel.id, {
-                      width: 32,
-                      height: 32,
-                    }) || (
-                        <div
-                          className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold"
-                          style={{
-                            background:
-                              selectedModel.id === 'deepseek'
-                                ? '#60a5fa'
-                                : '#c084fc',
-                            color: '#fff',
-                          }}
-                        >
-                          {selectedModel.name[0]}
+                {t('selectModel', language)}
+              </label>
+              <select
+                value={selectedProvider}
+                onChange={(e) => setSelectedProvider(e.target.value)}
+                className="w-full px-3 py-2 rounded"
+                style={{
+                  background: '#0B0E11',
+                  border: '1px solid #2B3139',
+                  color: '#EAECEF',
+                }}
+                required
+                disabled={!!editingModelId}
+              >
+                <option value="">{t('pleaseSelectModel', language)}</option>
+                {availableProviders.map((provider) => (
+                  <option key={provider} value={provider}>
+                    {AI_PROVIDER_CONFIG[provider].apiName} ({provider})
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {selectedProvider && (
+              <>
+                {/* Provider Info */}
+                <div
+                  className="p-4 rounded"
+                  style={{ background: '#0B0E11', border: '1px solid #2B3139' }}
+                >
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="w-8 h-8 flex items-center justify-center">
+                      {getModelIcon(selectedProvider, {
+                        width: 32,
+                        height: 32,
+                      }) || (
+                          <div
+                            className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold"
+                            style={{
+                              background:
+                                selectedProvider === 'deepseek'
+                                  ? '#60a5fa'
+                                  : '#c084fc',
+                              color: '#fff',
+                            }}
+                          >
+                            {selectedProvider[0].toUpperCase()}
+                          </div>
+                        )}
+                    </div>
+                    <div className="flex-1">
+                      <div className="font-semibold" style={{ color: '#EAECEF' }}>
+                        {AI_PROVIDER_CONFIG[selectedProvider]?.apiName || selectedProvider}
+                      </div>
+                      <div className="text-xs" style={{ color: '#848E9C' }}>
+                        {selectedProvider}
+                      </div>
+                    </div>
+                  </div>
+                  {/* Default model info and API link */}
+                  {AI_PROVIDER_CONFIG[selectedProvider] && (
+                    <div className="mt-3 pt-3" style={{ borderTop: '1px solid #2B3139' }}>
+                      <div className="text-xs mb-2" style={{ color: '#848E9C' }}>
+                        {t('defaultModel', language)}: <span style={{ color: '#F0B90B' }}>{AI_PROVIDER_CONFIG[selectedProvider].defaultModel}</span>
+                      </div>
+                      <a
+                        href={AI_PROVIDER_CONFIG[selectedProvider].apiUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1.5 text-xs hover:underline"
+                        style={{ color: '#F0B90B' }}
+                      >
+                        <ExternalLink className="w-3 h-3" />
+                        {t('applyApiKey', language)} → {AI_PROVIDER_CONFIG[selectedProvider].apiName}
+                      </a>
+                      {selectedProvider === 'kimi' && (
+                        <div className="mt-2 text-xs p-2 rounded" style={{ background: 'rgba(246, 70, 93, 0.1)', color: '#F6465D' }}>
+                          ⚠️ {t('kimiApiNote', language)}
                         </div>
                       )}
-                  </div>
-                  <div className="flex-1">
-                    <div className="font-semibold" style={{ color: '#EAECEF' }}>
-                      {getShortName(selectedModel.name)}
                     </div>
-                    <div className="text-xs" style={{ color: '#848E9C' }}>
-                      {selectedModel.provider} • {selectedModel.id}
-                    </div>
+                  )}
+                </div>
+
+                {/* Display Name */}
+                <div>
+                  <label
+                    className="block text-sm font-semibold mb-2"
+                    style={{ color: '#EAECEF' }}
+                  >
+                    {language === 'zh' ? '显示名称' : 'Display Name'}
+                  </label>
+                  <input
+                    type="text"
+                    value={displayName}
+                    onChange={(e) => setDisplayName(e.target.value)}
+                    placeholder={language === 'zh' ? '输入模型显示名称' : 'Enter display name'}
+                    className="w-full px-3 py-2 rounded"
+                    style={{
+                      background: '#0B0E11',
+                      border: '1px solid #2B3139',
+                      color: '#EAECEF',
+                    }}
+                    required
+                  />
+                  <div className="text-xs mt-1" style={{ color: '#848E9C' }}>
+                    {language === 'zh' ? '用于区分同一提供商的多个模型配置' : 'Used to distinguish multiple model configurations from the same provider'}
                   </div>
                 </div>
-                {/* Default model info and API link */}
-                {AI_PROVIDER_CONFIG[selectedModel.provider] && (
-                  <div className="mt-3 pt-3" style={{ borderTop: '1px solid #2B3139' }}>
-                    <div className="text-xs mb-2" style={{ color: '#848E9C' }}>
-                      {t('defaultModel', language)}: <span style={{ color: '#F0B90B' }}>{AI_PROVIDER_CONFIG[selectedModel.provider].defaultModel}</span>
-                    </div>
-                    <a
-                      href={AI_PROVIDER_CONFIG[selectedModel.provider].apiUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 text-xs hover:underline"
-                      style={{ color: '#F0B90B' }}
-                    >
-                      <ExternalLink className="w-3 h-3" />
-                      {t('applyApiKey', language)} → {AI_PROVIDER_CONFIG[selectedModel.provider].apiName}
-                    </a>
-                    {selectedModel.provider === 'kimi' && (
-                      <div className="mt-2 text-xs p-2 rounded" style={{ background: 'rgba(246, 70, 93, 0.1)', color: '#F6465D' }}>
-                        ⚠️ {t('kimiApiNote', language)}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
 
-            {selectedModel && (
-              <>
+                {/* API Key */}
                 <div>
                   <label
                     className="block text-sm font-semibold mb-2"
@@ -1696,10 +1631,16 @@ function ModelConfigModal({
                       border: '1px solid #2B3139',
                       color: '#EAECEF',
                     }}
-                    required
+                    required={!editingModelId}
                   />
+                  {editingModelId && (
+                    <div className="text-xs mt-1" style={{ color: '#848E9C' }}>
+                      {language === 'zh' ? '留空保持现有 API Key' : 'Leave empty to keep existing API Key'}
+                    </div>
+                  )}
                 </div>
 
+                {/* Custom Base URL */}
                 <div>
                   <label
                     className="block text-sm font-semibold mb-2"
@@ -1724,6 +1665,7 @@ function ModelConfigModal({
                   </div>
                 </div>
 
+                {/* Custom Model Name */}
                 <div>
                   <label
                     className="block text-sm font-semibold mb-2"
@@ -1748,6 +1690,7 @@ function ModelConfigModal({
                   </div>
                 </div>
 
+                {/* Info Box */}
                 <div
                   className="p-4 rounded"
                   style={{
@@ -1788,7 +1731,7 @@ function ModelConfigModal({
             </button>
             <button
               type="submit"
-              disabled={!selectedModel || !apiKey.trim()}
+              disabled={!selectedProvider || !displayName.trim() || (!editingModelId && !apiKey.trim())}
               className="flex-1 px-4 py-2 rounded text-sm font-semibold disabled:opacity-50"
               style={{ background: '#F0B90B', color: '#000' }}
             >

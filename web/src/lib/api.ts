@@ -217,6 +217,68 @@ export const api = {
     if (!result.success) throw new Error('更新模型配置失败')
   },
 
+  // 创建新的AI模型
+  async createModel(request: { name: string; provider: string; api_key: string; custom_api_url?: string; custom_model_name?: string }): Promise<{ id: string }> {
+    // 检查是否启用了传输加密
+    const config = await CryptoService.fetchCryptoConfig()
+
+    if (!config.transport_encryption) {
+      const result = await httpClient.post<{ id: string }>(`${API_BASE}/models`, request)
+      if (!result.success) throw new Error('创建AI模型失败')
+      return result.data!
+    }
+
+    // 获取RSA公钥
+    const publicKey = await CryptoService.fetchPublicKey()
+    await CryptoService.initialize(publicKey)
+
+    const userId = localStorage.getItem('user_id') || ''
+    const sessionId = sessionStorage.getItem('session_id') || ''
+
+    const encryptedPayload = await CryptoService.encryptSensitiveData(
+      JSON.stringify(request),
+      userId,
+      sessionId
+    )
+
+    const result = await httpClient.post<{ id: string }>(`${API_BASE}/models`, encryptedPayload)
+    if (!result.success) throw new Error('创建AI模型失败')
+    return result.data!
+  },
+
+  // 更新单个AI模型
+  async updateModel(modelId: string, request: { enabled: boolean; api_key?: string; custom_api_url?: string; custom_model_name?: string }): Promise<void> {
+    // 检查是否启用了传输加密
+    const config = await CryptoService.fetchCryptoConfig()
+
+    if (!config.transport_encryption) {
+      const result = await httpClient.put(`${API_BASE}/models/${modelId}`, request)
+      if (!result.success) throw new Error('更新AI模型失败')
+      return
+    }
+
+    const publicKey = await CryptoService.fetchPublicKey()
+    await CryptoService.initialize(publicKey)
+
+    const userId = localStorage.getItem('user_id') || ''
+    const sessionId = sessionStorage.getItem('session_id') || ''
+
+    const encryptedPayload = await CryptoService.encryptSensitiveData(
+      JSON.stringify(request),
+      userId,
+      sessionId
+    )
+
+    const result = await httpClient.put(`${API_BASE}/models/${modelId}`, encryptedPayload)
+    if (!result.success) throw new Error('更新AI模型失败')
+  },
+
+  // 删除AI模型
+  async deleteModel(modelId: string): Promise<void> {
+    const result = await httpClient.delete(`${API_BASE}/models/${modelId}`)
+    if (!result.success) throw new Error('删除AI模型失败')
+  },
+
   // 交易所配置接口
   async getExchangeConfigs(): Promise<Exchange[]> {
     const result = await httpClient.get<Exchange[]>(`${API_BASE}/exchanges`)

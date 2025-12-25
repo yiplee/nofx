@@ -147,7 +147,10 @@ func (s *Server) setupRoutes() {
 
 			// AI model configuration
 			protected.GET("/models", s.handleGetModelConfigs)
+			protected.POST("/models", s.handleCreateModel)
 			protected.PUT("/models", s.handleUpdateModelConfigs)
+			protected.PUT("/models/:id", s.handleUpdateModel)
+			protected.DELETE("/models/:id", s.handleDeleteModel)
 
 			// Exchange configuration
 			protected.GET("/exchanges", s.handleGetExchangeConfigs)
@@ -446,6 +449,24 @@ type UpdateModelConfigRequest struct {
 		CustomAPIURL    string `json:"custom_api_url"`
 		CustomModelName string `json:"custom_model_name"`
 	} `json:"models"`
+}
+
+// CreateModelRequest request structure for creating a new AI model
+type CreateModelRequest struct {
+	Name            string `json:"name" binding:"required"`     // User-defined model name
+	Provider        string `json:"provider" binding:"required"` // AI provider: deepseek, qwen, openai, claude, gemini, grok, kimi
+	APIKey          string `json:"api_key" binding:"required"`  // API key
+	CustomAPIURL    string `json:"custom_api_url"`              // Optional custom API URL
+	CustomModelName string `json:"custom_model_name"`           // Optional custom model name
+}
+
+// UpdateSingleModelRequest request structure for updating a single AI model
+type UpdateSingleModelRequest struct {
+	Name            string `json:"name"`             // Optional: update model name
+	Enabled         bool   `json:"enabled"`          // Whether the model is enabled
+	APIKey          string `json:"api_key"`          // Optional: update API key (empty = keep existing)
+	CustomAPIURL    string `json:"custom_api_url"`   // Optional custom API URL
+	CustomModelName string `json:"custom_model_name"` // Optional custom model name
 }
 
 type UpdateExchangeConfigRequest struct {
@@ -1441,6 +1462,103 @@ func (s *Server) handleUpdateModelConfigs(c *gin.Context) {
 
 	logger.Infof("✓ AI model config updated: %+v", req.Models)
 	c.JSON(http.StatusOK, gin.H{"message": "Model configuration updated"})
+}
+
+// handleCreateModel Create a new AI model
+func (s *Server) handleCreateModel(c *gin.Context) {
+	userID := c.GetString("user_id")
+
+	var req CreateModelRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("Invalid request: %v", err)})
+		return
+	}
+
+	// Validate provider
+	validProviders := map[string]bool{
+		"deepseek": true, "qwen": true, "openai": true, "claude": true,
+		"gemini": true, "grok": true, "kimi": true, "custom": true,
+	}
+	if !validProviders[req.Provider] {
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("Invalid provider: %s", req.Provider)})
+		return
+	}
+
+	// Create the model
+	modelID, err := s.store.AIModel().Create(userID, req.Name, req.Provider, true, req.APIKey, req.CustomAPIURL, req.CustomModelName)
+	if err != nil {
+		logger.Infof("❌ Failed to create AI model: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to create AI model: %v", err)})
+		return
+	}
+
+	logger.Infof("✓ Created AI model: ID=%s, Name=%s, Provider=%s", modelID, req.Name, req.Provider)
+	c.JSON(http.StatusOK, gin.H{
+		"message": "AI model created",
+		"id":      modelID,
+	})
+}
+
+// handleUpdateModel Update a single AI model by ID
+func (s *Server) handleUpdateModel(c *gin.Context) {
+	userID := c.GetString("user_id")
+	modelID := c.Param("id")
+
+	var req UpdateSingleModelRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("Invalid request: %v", err)})
+		return
+	}
+
+	// Update the model
+	err := s.store.AIModel().Update(userID, modelID, req.Enabled, req.APIKey, req.CustomAPIURL, req.CustomModelName)
+	if err != nil {
+		logger.Infof("❌ Failed to update AI model %s: %v", modelID, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to update AI model: %v", err)})
+		return
+	}
+
+	// Reload all traders for this user to make new config take effect immediately
+	err = s.traderManager.LoadUserTradersFromStore(s.store, userID)
+	if err != nil {
+		logger.Infof("⚠️ Failed to reload user traders into memory: %v", err)
+	}
+
+	logger.Infof("✓ Updated AI model: ID=%s", modelID)
+	c.JSON(http.StatusOK, gin.H{"message": "AI model updated"})
+}
+
+// handleDeleteModel Delete an AI model by ID
+func (s *Server) handleDeleteModel(c *gin.Context) {
+	userID := c.GetString("user_id")
+	modelID := c.Param("id")
+
+	// Check if model is being used by any trader
+	traders, err := s.store.Trader().List(userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to check traders: %v", err)})
+		return
+	}
+
+	for _, trader := range traders {
+		if trader.AIModelID == modelID {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": fmt.Sprintf("Cannot delete model: it is being used by trader '%s'", trader.Name),
+			})
+			return
+		}
+	}
+
+	// Delete the model
+	err = s.store.AIModel().Delete(userID, modelID)
+	if err != nil {
+		logger.Infof("❌ Failed to delete AI model %s: %v", modelID, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to delete AI model: %v", err)})
+		return
+	}
+
+	logger.Infof("✓ Deleted AI model: ID=%s", modelID)
+	c.JSON(http.StatusOK, gin.H{"message": "AI model deleted"})
 }
 
 // handleGetExchangeConfigs Get exchange configurations
