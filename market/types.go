@@ -2,17 +2,17 @@ package market
 
 // Data market data structure
 type Data struct {
-	Symbol            string
-	CurrentPrice      float64
-	PriceChange1h     float64 // 1-hour price change percentage
-	PriceChange4h     float64 // 4-hour price change percentage
-	CurrentEMA20      float64
-	CurrentMACD       float64
-	CurrentRSI7       float64
-	OpenInterest      *OIData
-	FundingRate       float64
-	IntradaySeries    *IntradayData
-	LongerTermContext *LongerTermData
+	Symbol            string          `json:"symbol"`
+	CurrentPrice      float64         `json:"current_price"`
+	PriceChange1h     float64         `json:"price_change_1h"`
+	PriceChange4h     float64         `json:"price_change_4h"`
+	CurrentEMA20      float64         `json:"current_ema20"`
+	CurrentMACD       float64         `json:"current_macd"`
+	CurrentRSI7       float64         `json:"current_rsi7"`
+	OpenInterest      *OIData         `json:"open_interest"`
+	FundingRate       float64         `json:"funding_rate"`
+	IntradaySeries    *IntradayData   `json:"intraday_series"`
+	LongerTermContext *LongerTermData `json:"longer_term_context"`
 	// Multi-timeframe data (new)
 	TimeframeData map[string]*TimeframeSeriesData `json:"timeframe_data,omitempty"`
 }
