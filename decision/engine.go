@@ -98,7 +98,6 @@ type RecentOrder struct {
 
 // Context trading context (complete information passed to AI)
 type Context struct {
-	Format          mcp.PromptFormat                   `json:"format"`
 	CurrentTime     string                             `json:"current_time"`
 	RuntimeMinutes  int                                `json:"runtime_minutes"`
 	CallCount       int                                `json:"call_count"`
@@ -108,13 +107,13 @@ type Context struct {
 	PromptVariant   string                             `json:"prompt_variant,omitempty"`
 	TradingStats    *TradingStats                      `json:"trading_stats,omitempty"`
 	RecentOrders    []RecentOrder                      `json:"recent_orders,omitempty"`
-	MarketDataMap   map[string]*market.Data            `json:"-"`
-	MultiTFMarket   map[string]map[string]*market.Data `json:"-"`
-	QuantDataMap    map[string]*QuantData              `json:"-"`
-	OIRankingData   *provider.OIRankingData            `json:"-"` // Market-wide OI ranking data
-	BTCETHLeverage  int                                `json:"-"`
-	AltcoinLeverage int                                `json:"-"`
-	Timeframes      []string                           `json:"-"`
+	MarketDataMap   map[string]*market.Data            `json:"market_data_map,omitempty"`
+	MultiTFMarket   map[string]map[string]*market.Data `json:"multi_tf_market,omitempty"`
+	QuantDataMap    map[string]*QuantData              `json:"quant_data_map,omitempty"`
+	OIRankingData   *provider.OIRankingData            `json:"oi_ranking_data,omitempty"` // Market-wide OI ranking data
+	BTCETHLeverage  int                                `json:"btc_eth_leverage,omitempty"`
+	AltcoinLeverage int                                `json:"altcoin_leverage,omitempty"`
+	Timeframes      []string                           `json:"timeframes,omitempty"`
 }
 
 // Decision AI trading decision
@@ -205,14 +204,6 @@ func (e *StrategyEngine) GetConfig() *store.StrategyConfig {
 // Entry Functions - Main API
 // ============================================================================
 
-// GetFullDecision gets AI's complete trading decision (batch analysis of all coins and positions)
-// Uses default strategy configuration - for production use GetFullDecisionWithStrategy with explicit config
-func GetFullDecision(ctx *Context, mcpClient mcp.AIClient) (*FullDecision, error) {
-	defaultConfig := store.GetDefaultStrategyConfig("en")
-	engine := NewStrategyEngine(&defaultConfig)
-	return GetFullDecisionWithStrategy(ctx, mcpClient, engine, "")
-}
-
 // GetFullDecisionWithStrategy uses StrategyEngine to get AI decision (unified prompt generation)
 func GetFullDecisionWithStrategy(ctx *Context, mcpClient mcp.AIClient, engine *StrategyEngine, variant string) (*FullDecision, error) {
 	if ctx == nil {
@@ -239,6 +230,12 @@ func GetFullDecisionWithStrategy(ctx *Context, mcpClient mcp.AIClient, engine *S
 
 	// 4. Call AI API
 	aiCallStart := time.Now()
+
+	// Add context to MCP client (for debugging, etc.)
+	if withMeta, ok := mcpClient.(mcp.AIClientWithMeta); ok {
+		mcpClient = withMeta.WithMeta("context", ctx)
+	}
+
 	aiResponse, err := mcpClient.CallWithMessages(systemPrompt, userPrompt)
 	aiCallDuration := time.Since(aiCallStart)
 	if err != nil {

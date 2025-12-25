@@ -113,11 +113,6 @@ func NewClient(opts ...ClientOption) AIClient {
 	return client
 }
 
-// PromptFormat returns the prompt format used by the client
-func (client *Client) PromptFormat() PromptFormat {
-	return PromptFormatPlain
-}
-
 // SetCustomAPI sets custom OpenAI-compatible API
 func (client *Client) SetAPIKey(apiKey, apiURL, customModel string) {
 	client.Provider = ProviderCustom
@@ -202,7 +197,7 @@ func (client *Client) buildMCPRequestBody(systemPrompt, userPrompt string) map[s
 	})
 
 	// Build request body
-	requestBody := map[string]interface{}{
+	requestBody := map[string]any{
 		"model":       client.Model,
 		"messages":    messages,
 		"temperature": client.config.Temperature, // Use configured temperature

@@ -1,6 +1,7 @@
 package mcp
 
 import (
+	"maps"
 	"net/http"
 )
 
@@ -10,6 +11,7 @@ const (
 
 type QuantClient struct {
 	*Client
+	meta map[string]any
 }
 
 // NewQuantClient creates Quant client (backward compatible)
@@ -55,8 +57,14 @@ func NewQuantClientWithOptions(opts ...ClientOption) AIClient {
 	return quantClient
 }
 
-func (quantClient *QuantClient) PromptFormat() PromptFormat {
-	return PromptFormatJSON
+func (quantClient *QuantClient) WithMeta(key string, value any) AIClient {
+	meta := make(map[string]any)
+	maps.Copy(meta, quantClient.meta)
+	meta[key] = value
+	return &QuantClient{
+		Client: quantClient.Client,
+		meta:   meta,
+	}
 }
 
 func (quantClient *QuantClient) SetAPIKey(apiKey string, customURL string, customModel string) {
@@ -81,4 +89,12 @@ func (quantClient *QuantClient) SetAPIKey(apiKey string, customURL string, custo
 
 func (quantClient *QuantClient) setAuthHeader(reqHeaders http.Header) {
 	quantClient.Client.setAuthHeader(reqHeaders)
+}
+
+func (quantClient *QuantClient) marshalRequestBody(requestBody map[string]any) ([]byte, error) {
+	body := map[string]any{
+		"meta": quantClient.meta,
+	}
+	maps.Copy(body, requestBody)
+	return quantClient.Client.marshalRequestBody(body)
 }

@@ -756,7 +756,6 @@ func (at *AutoTrader) buildTradingContext() (*decision.Context, error) {
 
 	// 6. Build context
 	ctx := &decision.Context{
-		Format:          at.mcpClient.PromptFormat(),
 		CurrentTime:     time.Now().UTC().Format("2006-01-02 15:04:05 UTC"),
 		RuntimeMinutes:  int(time.Since(at.startTime).Minutes()),
 		CallCount:       at.callCount,
