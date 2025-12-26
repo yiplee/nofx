@@ -61,10 +61,13 @@ func (quantClient *QuantClient) WithMeta(key string, value any) AIClient {
 	meta := make(map[string]any)
 	maps.Copy(meta, quantClient.meta)
 	meta[key] = value
-	return &QuantClient{
+	client := &QuantClient{
 		Client: quantClient.Client,
 		meta:   meta,
 	}
+
+	client.Client.hooks = client
+	return client
 }
 
 func (quantClient *QuantClient) SetAPIKey(apiKey string, customURL string, customModel string) {
