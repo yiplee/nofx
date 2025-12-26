@@ -10,7 +10,6 @@ import type {
   Exchange,
   CreateTraderRequest,
   CreateExchangeRequest,
-  UpdateModelConfigRequest,
   UpdateExchangeConfigRequest,
   CompetitionData,
   BacktestRunsResponse,
@@ -184,37 +183,67 @@ export const api = {
     return []
   },
 
-  async updateModelConfigs(request: UpdateModelConfigRequest): Promise<void> {
+  // 创建新的AI模型
+  async createModel(request: { name: string; provider: string; api_key: string; custom_api_url?: string; custom_model_name?: string }): Promise<{ id: string }> {
     // 检查是否启用了传输加密
     const config = await CryptoService.fetchCryptoConfig()
 
     if (!config.transport_encryption) {
-      // 传输加密禁用时，直接发送明文
-      const result = await httpClient.put(`${API_BASE}/models`, request)
-      if (!result.success) throw new Error('更新模型配置失败')
-      return
+      const result = await httpClient.post<{ id: string }>(`${API_BASE}/models`, request)
+      if (!result.success) throw new Error('创建AI模型失败')
+      return result.data!
     }
 
     // 获取RSA公钥
     const publicKey = await CryptoService.fetchPublicKey()
-
-    // 初始化加密服务
     await CryptoService.initialize(publicKey)
 
-    // 获取用户信息（从localStorage或其他地方）
     const userId = localStorage.getItem('user_id') || ''
     const sessionId = sessionStorage.getItem('session_id') || ''
 
-    // 加密敏感数据
     const encryptedPayload = await CryptoService.encryptSensitiveData(
       JSON.stringify(request),
       userId,
       sessionId
     )
 
-    // 发送加密数据
-    const result = await httpClient.put(`${API_BASE}/models`, encryptedPayload)
-    if (!result.success) throw new Error('更新模型配置失败')
+    const result = await httpClient.post<{ id: string }>(`${API_BASE}/models`, encryptedPayload)
+    if (!result.success) throw new Error('创建AI模型失败')
+    return result.data!
+  },
+
+  // 更新单个AI模型
+  async updateModel(modelId: string, request: { name: string; enabled: boolean; api_key?: string; custom_api_url?: string; custom_model_name?: string }): Promise<void> {
+    // 检查是否启用了传输加密
+    const config = await CryptoService.fetchCryptoConfig()
+
+    if (!config.transport_encryption) {
+      const result = await httpClient.put(`${API_BASE}/models/${modelId}`, request)
+      if (!result.success) throw new Error('更新AI模型失败')
+      return
+    }
+
+    // 获取RSA公钥
+    const publicKey = await CryptoService.fetchPublicKey()
+    await CryptoService.initialize(publicKey)
+
+    const userId = localStorage.getItem('user_id') || ''
+    const sessionId = sessionStorage.getItem('session_id') || ''
+
+    const encryptedPayload = await CryptoService.encryptSensitiveData(
+      JSON.stringify(request),
+      userId,
+      sessionId
+    )
+
+    const result = await httpClient.put(`${API_BASE}/models/${modelId}`, encryptedPayload)
+    if (!result.success) throw new Error('更新AI模型失败')
+  },
+
+  // 删除AI模型
+  async deleteModel(modelId: string): Promise<void> {
+    const result = await httpClient.delete(`${API_BASE}/models/${modelId}`)
+    if (!result.success) throw new Error('删除AI模型失败')
   },
 
   // 交易所配置接口

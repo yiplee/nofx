@@ -2,7 +2,6 @@ package api
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"net"
 	"net/http"
@@ -12,8 +11,10 @@ import (
 	"nofx/crypto"
 	"nofx/logger"
 	"nofx/manager"
+	"nofx/mcp"
 	"nofx/store"
 	"nofx/trader"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -147,7 +148,9 @@ func (s *Server) setupRoutes() {
 
 			// AI model configuration
 			protected.GET("/models", s.handleGetModelConfigs)
-			protected.PUT("/models", s.handleUpdateModelConfigs)
+			protected.POST("/models", s.handleCreateModel)
+			protected.PUT("/models/:id", s.handleUpdateModel)
+			protected.DELETE("/models/:id", s.handleDeleteModel)
 
 			// Exchange configuration
 			protected.GET("/exchanges", s.handleGetExchangeConfigs)
@@ -441,11 +444,30 @@ type SafeExchangeConfig struct {
 
 type UpdateModelConfigRequest struct {
 	Models map[string]struct {
+		Name            string `json:"name"`
 		Enabled         bool   `json:"enabled"`
 		APIKey          string `json:"api_key"`
 		CustomAPIURL    string `json:"custom_api_url"`
 		CustomModelName string `json:"custom_model_name"`
 	} `json:"models"`
+}
+
+// CreateModelRequest request structure for creating a new AI model
+type CreateModelRequest struct {
+	Name            string `json:"name" binding:"required"`     // User-defined model name
+	Provider        string `json:"provider" binding:"required"` // AI provider: deepseek, qwen, openai, claude, gemini, grok, kimi
+	APIKey          string `json:"api_key" binding:"required"`  // API key
+	CustomAPIURL    string `json:"custom_api_url"`              // Optional custom API URL
+	CustomModelName string `json:"custom_model_name"`           // Optional custom model name
+}
+
+// UpdateSingleModelRequest request structure for updating a single AI model
+type UpdateSingleModelRequest struct {
+	Name            string `json:"name"`              // Optional: update model name
+	Enabled         bool   `json:"enabled"`           // Whether the model is enabled
+	APIKey          string `json:"api_key"`           // Optional: update API key (empty = keep existing)
+	CustomAPIURL    string `json:"custom_api_url"`    // Optional custom API URL
+	CustomModelName string `json:"custom_model_name"` // Optional custom model name
 }
 
 type UpdateExchangeConfigRequest struct {
@@ -1363,84 +1385,106 @@ func (s *Server) handleGetModelConfigs(c *gin.Context) {
 	c.JSON(http.StatusOK, safeModels)
 }
 
-// handleUpdateModelConfigs Update AI model configurations (supports both encrypted and plain text based on config)
-func (s *Server) handleUpdateModelConfigs(c *gin.Context) {
+// handleCreateModel Create a new AI model
+func (s *Server) handleCreateModel(c *gin.Context) {
 	userID := c.GetString("user_id")
-	cfg := config.Get()
 
-	// Read raw request body
-	bodyBytes, err := c.GetRawData()
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to read request body"})
+	var req CreateModelRequest
+	s.parseEncryptedRequest(c, &req)
+	if c.IsAborted() {
 		return
 	}
 
-	var req UpdateModelConfigRequest
-
-	// Check if transport encryption is enabled
-	if !cfg.TransportEncryption {
-		// Transport encryption disabled, accept plain JSON
-		if err := json.Unmarshal(bodyBytes, &req); err != nil {
-			logger.Infof("❌ Failed to parse plain JSON request: %v", err)
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request format"})
-			return
-		}
-		logger.Infof("📝 Received plain text model config (UserID: %s)", userID)
-	} else {
-		// Transport encryption enabled, require encrypted payload
-		var encryptedPayload crypto.EncryptedPayload
-		if err := json.Unmarshal(bodyBytes, &encryptedPayload); err != nil {
-			logger.Infof("❌ Failed to parse encrypted payload: %v", err)
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request format, encrypted transmission required"})
-			return
-		}
-
-		// Verify encrypted data
-		if encryptedPayload.WrappedKey == "" {
-			logger.Infof("❌ Detected unencrypted request (UserID: %s)", userID)
-			c.JSON(http.StatusBadRequest, gin.H{
-				"error":   "This endpoint only supports encrypted transmission, please use encrypted client",
-				"code":    "ENCRYPTION_REQUIRED",
-				"message": "Encrypted transmission is required for security reasons",
-			})
-			return
-		}
-
-		// Decrypt data
-		decrypted, err := s.cryptoHandler.cryptoService.DecryptSensitiveData(&encryptedPayload)
-		if err != nil {
-			logger.Infof("❌ Failed to decrypt model config (UserID: %s): %v", userID, err)
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to decrypt data"})
-			return
-		}
-
-		// Parse decrypted data
-		if err := json.Unmarshal([]byte(decrypted), &req); err != nil {
-			logger.Infof("❌ Failed to parse decrypted data: %v", err)
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to parse decrypted data"})
-			return
-		}
-		logger.Infof("🔓 Decrypted model config data (UserID: %s)", userID)
+	validProviders := []string{
+		mcp.ProviderDeepSeek,
+		mcp.ProviderQuant,
+		mcp.ProviderQwen,
+		mcp.ProviderOpenAI,
+		mcp.ProviderClaude,
+		mcp.ProviderGemini,
+		mcp.ProviderGrok,
+		mcp.ProviderKimi,
+		mcp.ProviderCustom,
+	}
+	if !slices.Contains(validProviders, req.Provider) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("Invalid provider: %s", req.Provider)})
+		return
 	}
 
-	// Update each model's configuration
-	for modelID, modelData := range req.Models {
-		err := s.store.AIModel().Update(userID, modelID, modelData.Enabled, modelData.APIKey, modelData.CustomAPIURL, modelData.CustomModelName)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to update model %s: %v", modelID, err)})
-			return
-		}
+	// Create the model
+	modelID, err := s.store.AIModel().Create(userID, req.Name, req.Provider, true, req.APIKey, req.CustomAPIURL, req.CustomModelName)
+	if err != nil {
+		logger.Infof("❌ Failed to create AI model: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to create AI model: %v", err)})
+		return
+	}
+
+	logger.Infof("✓ Created AI model: ID=%s, Name=%s, Provider=%s", modelID, req.Name, req.Provider)
+	c.JSON(http.StatusOK, gin.H{
+		"message": "AI model created",
+		"id":      modelID,
+	})
+}
+
+// handleUpdateModel Update a single AI model by ID
+func (s *Server) handleUpdateModel(c *gin.Context) {
+	userID := c.GetString("user_id")
+	modelID := c.Param("id")
+
+	var req UpdateSingleModelRequest
+	s.parseEncryptedRequest(c, &req)
+	if c.IsAborted() {
+		return
+	}
+
+	// Update the model
+	if err := s.store.AIModel().Update(userID, modelID, req.Name, req.Enabled, req.APIKey, req.CustomAPIURL, req.CustomModelName); err != nil {
+		logger.Infof("❌ Failed to update AI model %s: %v", modelID, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to update AI model: %v", err)})
+		return
 	}
 
 	// Reload all traders for this user to make new config take effect immediately
-	err = s.traderManager.LoadUserTradersFromStore(s.store, userID)
-	if err != nil {
+	if err := s.traderManager.LoadUserTradersFromStore(s.store, userID); err != nil {
 		logger.Infof("⚠️ Failed to reload user traders into memory: %v", err)
-		// Don't return error here since model config was successfully updated to database
+		return
 	}
 
-	logger.Infof("✓ AI model config updated: %+v", req.Models)
-	c.JSON(http.StatusOK, gin.H{"message": "Model configuration updated"})
+	logger.Infof("✅ Updated AI model: ID=%s", modelID)
+	c.JSON(http.StatusOK, gin.H{"message": "AI model updated"})
+}
+
+// handleDeleteModel Delete an AI model by ID
+func (s *Server) handleDeleteModel(c *gin.Context) {
+	userID := c.GetString("user_id")
+	modelID := c.Param("id")
+
+	// Check if model is being used by any trader
+	traders, err := s.store.Trader().List(userID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to check traders: %v", err)})
+		return
+	}
+
+	for _, trader := range traders {
+		if trader.AIModelID == modelID {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": fmt.Sprintf("Cannot delete model: it is being used by trader '%s'", trader.Name),
+			})
+			return
+		}
+	}
+
+	// Delete the model
+	err = s.store.AIModel().Delete(userID, modelID)
+	if err != nil {
+		logger.Infof("❌ Failed to delete AI model %s: %v", modelID, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to delete AI model: %v", err)})
+		return
+	}
+
+	logger.Infof("✓ Deleted AI model: ID=%s", modelID)
+	c.JSON(http.StatusOK, gin.H{"message": "AI model deleted"})
 }
 
 // handleGetExchangeConfigs Get exchange configurations
@@ -1489,61 +1533,11 @@ func (s *Server) handleGetExchangeConfigs(c *gin.Context) {
 // handleUpdateExchangeConfigs Update exchange configurations (supports both encrypted and plain text based on config)
 func (s *Server) handleUpdateExchangeConfigs(c *gin.Context) {
 	userID := c.GetString("user_id")
-	cfg := config.Get()
-
-	// Read raw request body
-	bodyBytes, err := c.GetRawData()
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to read request body"})
-		return
-	}
 
 	var req UpdateExchangeConfigRequest
-
-	// Check if transport encryption is enabled
-	if !cfg.TransportEncryption {
-		// Transport encryption disabled, accept plain JSON
-		if err := json.Unmarshal(bodyBytes, &req); err != nil {
-			logger.Infof("❌ Failed to parse plain JSON request: %v", err)
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request format"})
-			return
-		}
-		logger.Infof("📝 Received plain text exchange config (UserID: %s)", userID)
-	} else {
-		// Transport encryption enabled, require encrypted payload
-		var encryptedPayload crypto.EncryptedPayload
-		if err := json.Unmarshal(bodyBytes, &encryptedPayload); err != nil {
-			logger.Infof("❌ Failed to parse encrypted payload: %v", err)
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request format, encrypted transmission required"})
-			return
-		}
-
-		// Verify encrypted data
-		if encryptedPayload.WrappedKey == "" {
-			logger.Infof("❌ Detected unencrypted request (UserID: %s)", userID)
-			c.JSON(http.StatusBadRequest, gin.H{
-				"error":   "This endpoint only supports encrypted transmission, please use encrypted client",
-				"code":    "ENCRYPTION_REQUIRED",
-				"message": "Encrypted transmission is required for security reasons",
-			})
-			return
-		}
-
-		// Decrypt data
-		decrypted, err := s.cryptoHandler.cryptoService.DecryptSensitiveData(&encryptedPayload)
-		if err != nil {
-			logger.Infof("❌ Failed to decrypt exchange config (UserID: %s): %v", userID, err)
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to decrypt data"})
-			return
-		}
-
-		// Parse decrypted data
-		if err := json.Unmarshal([]byte(decrypted), &req); err != nil {
-			logger.Infof("❌ Failed to parse decrypted data: %v", err)
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to parse decrypted data"})
-			return
-		}
-		logger.Infof("🔓 Decrypted exchange config data (UserID: %s)", userID)
+	s.parseEncryptedRequest(c, &req)
+	if c.IsAborted() {
+		return
 	}
 
 	// Update each exchange's configuration
@@ -1556,13 +1550,13 @@ func (s *Server) handleUpdateExchangeConfigs(c *gin.Context) {
 	}
 
 	// Reload all traders for this user to make new config take effect immediately
-	err = s.traderManager.LoadUserTradersFromStore(s.store, userID)
-	if err != nil {
+	if err := s.traderManager.LoadUserTradersFromStore(s.store, userID); err != nil {
 		logger.Infof("⚠️ Failed to reload user traders into memory: %v", err)
 		// Don't return error here since exchange config was successfully updated to database
+		return
 	}
 
-	logger.Infof("✓ Exchange config updated: %+v", req.Exchanges)
+	logger.Infof("✅ Exchange config updated: %+v", req.Exchanges)
 	c.JSON(http.StatusOK, gin.H{"message": "Exchange configuration updated"})
 }
 
@@ -1590,60 +1584,18 @@ type CreateExchangeRequest struct {
 // handleCreateExchange Create a new exchange account
 func (s *Server) handleCreateExchange(c *gin.Context) {
 	userID := c.GetString("user_id")
-	cfg := config.Get()
 
-	// Read raw request body
-	bodyBytes, err := c.GetRawData()
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to read request body"})
+	var req CreateExchangeRequest
+	s.parseEncryptedRequest(c, &req)
+	if c.IsAborted() {
 		return
 	}
 
-	var req CreateExchangeRequest
-
-	// Check if transport encryption is enabled
-	if !cfg.TransportEncryption {
-		// Transport encryption disabled, accept plain JSON
-		if err := json.Unmarshal(bodyBytes, &req); err != nil {
-			logger.Infof("❌ Failed to parse plain JSON request: %v", err)
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request format"})
-			return
-		}
-	} else {
-		// Transport encryption enabled, require encrypted payload
-		var encryptedPayload crypto.EncryptedPayload
-		if err := json.Unmarshal(bodyBytes, &encryptedPayload); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request format, encrypted transmission required"})
-			return
-		}
-
-		if encryptedPayload.WrappedKey == "" {
-			c.JSON(http.StatusBadRequest, gin.H{
-				"error":   "This endpoint only supports encrypted transmission",
-				"code":    "ENCRYPTION_REQUIRED",
-				"message": "Encrypted transmission is required for security reasons",
-			})
-			return
-		}
-
-		decrypted, err := s.cryptoHandler.cryptoService.DecryptSensitiveData(&encryptedPayload)
-		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to decrypt data"})
-			return
-		}
-
-		if err := json.Unmarshal([]byte(decrypted), &req); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to parse decrypted data"})
-			return
-		}
+	validTypes := []string{
+		"binance", "bybit", "okx", "bitget",
+		"hyperliquid", "aster", "lighter",
 	}
-
-	// Validate exchange type
-	validTypes := map[string]bool{
-		"binance": true, "bybit": true, "okx": true, "bitget": true,
-		"hyperliquid": true, "aster": true, "lighter": true,
-	}
-	if !validTypes[req.ExchangeType] {
+	if !slices.Contains(validTypes, req.ExchangeType) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("Invalid exchange type: %s", req.ExchangeType)})
 		return
 	}

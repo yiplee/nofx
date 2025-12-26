@@ -183,6 +183,7 @@ export interface CreateTraderRequest {
 export interface UpdateModelConfigRequest {
   models: {
     [key: string]: {
+      name: string
       enabled: boolean
       api_key: string
       custom_api_url?: string
