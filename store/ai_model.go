@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"nofx/logger"
-	"strings"
 	"time"
 )
 
@@ -231,83 +230,27 @@ func (s *AIModelStore) firstEnabled(userID string) (*AIModel, error) {
 
 // Update updates AI model, creates if not exists
 // IMPORTANT: If apiKey is empty string, the existing API key will be preserved (not overwritten)
-func (s *AIModelStore) Update(userID, id string, enabled bool, apiKey, customAPIURL, customModelName string) error {
+func (s *AIModelStore) Update(userID, id, name string, enabled bool, apiKey, customAPIURL, customModelName string) error {
 	// Try exact ID match first
 	var existingID string
 	err := s.db.QueryRow(`SELECT id FROM ai_models WHERE user_id = ? AND id = ? LIMIT 1`, userID, id).Scan(&existingID)
-	if err == nil {
-		// If apiKey is empty, preserve the existing API key
-		if apiKey == "" {
-			_, err = s.db.Exec(`
-				UPDATE ai_models SET enabled = ?, custom_api_url = ?, custom_model_name = ?, updated_at = datetime('now')
-				WHERE id = ? AND user_id = ?
-			`, enabled, customAPIURL, customModelName, existingID, userID)
-		} else {
-			encryptedAPIKey := s.encrypt(apiKey)
-			_, err = s.db.Exec(`
-				UPDATE ai_models SET enabled = ?, api_key = ?, custom_api_url = ?, custom_model_name = ?, updated_at = datetime('now')
-				WHERE id = ? AND user_id = ?
-			`, enabled, encryptedAPIKey, customAPIURL, customModelName, existingID, userID)
-		}
-		return err
-	}
-
-	// Try legacy logic compatibility: use id as provider to search
-	provider := id
-	err = s.db.QueryRow(`SELECT id FROM ai_models WHERE user_id = ? AND provider = ? LIMIT 1`, userID, provider).Scan(&existingID)
-	if err == nil {
-		logger.Warnf("⚠️ Using legacy provider matching to update model: %s -> %s", provider, existingID)
-		// If apiKey is empty, preserve the existing API key
-		if apiKey == "" {
-			_, err = s.db.Exec(`
-				UPDATE ai_models SET enabled = ?, custom_api_url = ?, custom_model_name = ?, updated_at = datetime('now')
-				WHERE id = ? AND user_id = ?
-			`, enabled, customAPIURL, customModelName, existingID, userID)
-		} else {
-			encryptedAPIKey := s.encrypt(apiKey)
-			_, err = s.db.Exec(`
-				UPDATE ai_models SET enabled = ?, api_key = ?, custom_api_url = ?, custom_model_name = ?, updated_at = datetime('now')
-				WHERE id = ? AND user_id = ?
-			`, enabled, encryptedAPIKey, customAPIURL, customModelName, existingID, userID)
-		}
-		return err
-	}
-
-	// Create new record
-	if provider == id && (provider == "deepseek" || provider == "qwen") {
-		provider = id
-	} else {
-		parts := strings.Split(id, "_")
-		if len(parts) >= 2 {
-			provider = parts[len(parts)-1]
-		} else {
-			provider = id
-		}
-	}
-
-	var name string
-	err = s.db.QueryRow(`SELECT name FROM ai_models WHERE provider = ? LIMIT 1`, provider).Scan(&name)
 	if err != nil {
-		if provider == "deepseek" {
-			name = "DeepSeek AI"
-		} else if provider == "qwen" {
-			name = "Qwen AI"
-		} else {
-			name = provider + " AI"
-		}
+		return err
 	}
 
-	newModelID := id
-	if id == provider {
-		newModelID = fmt.Sprintf("%s_%s", userID, provider)
+	// If apiKey is empty, preserve the existing API key
+	if apiKey == "" {
+		_, err = s.db.Exec(`
+				UPDATE ai_models SET name = ?, enabled = ?, custom_api_url = ?, custom_model_name = ?, updated_at = datetime('now')
+				WHERE id = ? AND user_id = ?
+			`, name, enabled, customAPIURL, customModelName, existingID, userID)
+	} else {
+		encryptedAPIKey := s.encrypt(apiKey)
+		_, err = s.db.Exec(`
+				UPDATE ai_models SET name = ?, enabled = ?, api_key = ?, custom_api_url = ?, custom_model_name = ?, updated_at = datetime('now')
+				WHERE id = ? AND user_id = ?
+			`, name, enabled, encryptedAPIKey, customAPIURL, customModelName, existingID, userID)
 	}
-
-	logger.Infof("✓ Creating new AI model configuration: ID=%s, Provider=%s, Name=%s", newModelID, provider, name)
-	encryptedAPIKey := s.encrypt(apiKey)
-	_, err = s.db.Exec(`
-		INSERT INTO ai_models (id, user_id, name, provider, enabled, api_key, custom_api_url, custom_model_name, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
-	`, newModelID, userID, name, provider, enabled, encryptedAPIKey, customAPIURL, customModelName)
 	return err
 }
 

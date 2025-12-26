@@ -1,6 +1,60 @@
 package api
 
-import "strings"
+import (
+	"encoding/json"
+	"net/http"
+	"nofx/config"
+	"nofx/crypto"
+	"strings"
+
+	"github.com/gin-gonic/gin"
+)
+
+func (s *Server) parseEncryptedRequest(c *gin.Context, body any) {
+	cfg := config.Get()
+
+	rawBody, err := c.GetRawData()
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to read request body"})
+		return
+	}
+
+	if !cfg.TransportEncryption {
+		if err := json.Unmarshal(rawBody, body); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request format"})
+			return
+		}
+
+		return
+	}
+
+	var encryptedPayload crypto.EncryptedPayload
+	if err := json.Unmarshal(rawBody, &encryptedPayload); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request format, encrypted transmission required"})
+		return
+	}
+
+	if encryptedPayload.WrappedKey == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error":   "This endpoint only supports encrypted transmission",
+			"code":    "ENCRYPTION_REQUIRED",
+			"message": "Encrypted transmission is required for security reasons",
+		})
+
+		return
+	}
+
+	decrypted, err := s.cryptoHandler.cryptoService.DecryptSensitiveData(&encryptedPayload)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to decrypt data"})
+		return
+	}
+
+	if err := json.Unmarshal([]byte(decrypted), body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to parse decrypted data"})
+		return
+	}
+}
 
 // MaskSensitiveString Mask sensitive strings, showing only first 4 and last 4 characters
 // Used to mask API Key, Secret Key, Private Key and other sensitive information

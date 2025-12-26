@@ -10,7 +10,6 @@ import type {
   Exchange,
   CreateTraderRequest,
   CreateExchangeRequest,
-  UpdateModelConfigRequest,
   UpdateExchangeConfigRequest,
   CompetitionData,
   BacktestRunsResponse,
@@ -184,39 +183,6 @@ export const api = {
     return []
   },
 
-  async updateModelConfigs(request: UpdateModelConfigRequest): Promise<void> {
-    // 检查是否启用了传输加密
-    const config = await CryptoService.fetchCryptoConfig()
-
-    if (!config.transport_encryption) {
-      // 传输加密禁用时，直接发送明文
-      const result = await httpClient.put(`${API_BASE}/models`, request)
-      if (!result.success) throw new Error('更新模型配置失败')
-      return
-    }
-
-    // 获取RSA公钥
-    const publicKey = await CryptoService.fetchPublicKey()
-
-    // 初始化加密服务
-    await CryptoService.initialize(publicKey)
-
-    // 获取用户信息（从localStorage或其他地方）
-    const userId = localStorage.getItem('user_id') || ''
-    const sessionId = sessionStorage.getItem('session_id') || ''
-
-    // 加密敏感数据
-    const encryptedPayload = await CryptoService.encryptSensitiveData(
-      JSON.stringify(request),
-      userId,
-      sessionId
-    )
-
-    // 发送加密数据
-    const result = await httpClient.put(`${API_BASE}/models`, encryptedPayload)
-    if (!result.success) throw new Error('更新模型配置失败')
-  },
-
   // 创建新的AI模型
   async createModel(request: { name: string; provider: string; api_key: string; custom_api_url?: string; custom_model_name?: string }): Promise<{ id: string }> {
     // 检查是否启用了传输加密
@@ -247,7 +213,7 @@ export const api = {
   },
 
   // 更新单个AI模型
-  async updateModel(modelId: string, request: { enabled: boolean; api_key?: string; custom_api_url?: string; custom_model_name?: string }): Promise<void> {
+  async updateModel(modelId: string, request: { name: string; enabled: boolean; api_key?: string; custom_api_url?: string; custom_model_name?: string }): Promise<void> {
     // 检查是否启用了传输加密
     const config = await CryptoService.fetchCryptoConfig()
 
@@ -257,6 +223,7 @@ export const api = {
       return
     }
 
+    // 获取RSA公钥
     const publicKey = await CryptoService.fetchPublicKey()
     await CryptoService.initialize(publicKey)
 

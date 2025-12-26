@@ -528,6 +528,7 @@ export function AITradersPage({ onTraderSelect }: AITradersPageProps) {
         // 更新现有模型
         await toast.promise(api.updateModel(modelId, {
           enabled: true,
+          name: displayName,
           api_key: apiKey || undefined,
           custom_api_url: customApiUrl || '',
           custom_model_name: customModelName || '',
