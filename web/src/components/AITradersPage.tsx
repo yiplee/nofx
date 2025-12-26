@@ -65,6 +65,11 @@ const AI_PROVIDER_CONFIG: Record<string, {
     apiUrl: 'https://platform.deepseek.com/api_keys',
     apiName: 'DeepSeek',
   },
+  quant: {
+    defaultModel: 'quant-v1',
+    apiUrl: 'https://quant.com/api',
+    apiName: 'Quant',
+  },
   qwen: {
     defaultModel: 'qwen3-max',
     apiUrl: 'https://dashscope.console.aliyun.com/apiKey',
