@@ -233,6 +233,7 @@ func GetFullDecisionWithStrategy(ctx *Context, mcpClient mcp.AIClient, engine *S
 
 	// Add context to MCP client (for debugging, etc.)
 	if withMeta, ok := mcpClient.(mcp.AIClientWithMeta); ok {
+		logger.Info("📊 Adding context to MCP client")
 		mcpClient = withMeta.WithMeta("context", ctx)
 	}
 

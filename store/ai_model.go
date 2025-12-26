@@ -257,7 +257,7 @@ func (s *AIModelStore) Update(userID, id, name string, enabled bool, apiKey, cus
 // Create creates a new AI model with auto-generated ID
 func (s *AIModelStore) Create(userID, name, provider string, enabled bool, apiKey, customAPIURL, customModelName string) (string, error) {
 	// Generate unique ID: {userID}_{provider}_{timestamp}
-	modelID := fmt.Sprintf("%s_%s_%d", userID, provider, time.Now().UnixNano())
+	modelID := fmt.Sprintf("%s_%s_%d", provider, userID, time.Now().UnixNano())
 
 	encryptedAPIKey := s.encrypt(apiKey)
 	_, err := s.db.Exec(`
