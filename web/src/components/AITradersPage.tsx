@@ -43,6 +43,8 @@ function getModelDisplayName(modelId: string): string {
       return 'Qwen'
     case 'claude':
       return 'Claude'
+    case 'quant':
+      return 'Quant'
     default:
       return modelId.toUpperCase()
   }
