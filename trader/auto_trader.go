@@ -761,6 +761,8 @@ func (at *AutoTrader) buildTradingContext() (*decision.Context, error) {
 		CallCount:       at.callCount,
 		BTCETHLeverage:  btcEthLeverage,
 		AltcoinLeverage: altcoinLeverage,
+		MinConfidence:   strategyConfig.RiskControl.MinConfidence,
+		Timeframes:      []string{strategyConfig.Indicators.Klines.PrimaryTimeframe},
 		Account: decision.AccountInfo{
 			TotalEquity:      totalEquity,
 			AvailableBalance: availableBalance,

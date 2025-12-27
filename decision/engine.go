@@ -113,6 +113,7 @@ type Context struct {
 	OIRankingData   *provider.OIRankingData            `json:"oi_ranking_data,omitempty"` // Market-wide OI ranking data
 	BTCETHLeverage  int                                `json:"btc_eth_leverage,omitempty"`
 	AltcoinLeverage int                                `json:"altcoin_leverage,omitempty"`
+	MinConfidence   int                                `json:"min_confidence,omitempty"`
 	Timeframes      []string                           `json:"timeframes,omitempty"`
 }
 
