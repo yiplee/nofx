@@ -98,23 +98,21 @@ type RecentOrder struct {
 
 // Context trading context (complete information passed to AI)
 type Context struct {
-	CurrentTime     string                             `json:"current_time"`
-	RuntimeMinutes  int                                `json:"runtime_minutes"`
-	CallCount       int                                `json:"call_count"`
-	Account         AccountInfo                        `json:"account"`
-	Positions       []PositionInfo                     `json:"positions"`
-	CandidateCoins  []CandidateCoin                    `json:"candidate_coins"`
-	PromptVariant   string                             `json:"prompt_variant,omitempty"`
-	TradingStats    *TradingStats                      `json:"trading_stats,omitempty"`
-	RecentOrders    []RecentOrder                      `json:"recent_orders,omitempty"`
-	MarketDataMap   map[string]*market.Data            `json:"market_data_map,omitempty"`
-	MultiTFMarket   map[string]map[string]*market.Data `json:"multi_tf_market,omitempty"`
-	QuantDataMap    map[string]*QuantData              `json:"quant_data_map,omitempty"`
-	OIRankingData   *provider.OIRankingData            `json:"oi_ranking_data,omitempty"` // Market-wide OI ranking data
-	BTCETHLeverage  int                                `json:"btc_eth_leverage,omitempty"`
-	AltcoinLeverage int                                `json:"altcoin_leverage,omitempty"`
-	MinConfidence   int                                `json:"min_confidence,omitempty"`
-	Timeframes      []string                           `json:"timeframes,omitempty"`
+	CurrentTime    string                             `json:"current_time"`
+	RuntimeMinutes int                                `json:"runtime_minutes"`
+	CallCount      int                                `json:"call_count"`
+	Account        AccountInfo                        `json:"account"`
+	Positions      []PositionInfo                     `json:"positions"`
+	CandidateCoins []CandidateCoin                    `json:"candidate_coins"`
+	PromptVariant  string                             `json:"prompt_variant,omitempty"`
+	TradingStats   *TradingStats                      `json:"trading_stats,omitempty"`
+	RecentOrders   []RecentOrder                      `json:"recent_orders,omitempty"`
+	MarketDataMap  map[string]*market.Data            `json:"market_data_map,omitempty"`
+	MultiTFMarket  map[string]map[string]*market.Data `json:"multi_tf_market,omitempty"`
+	QuantDataMap   map[string]*QuantData              `json:"quant_data_map,omitempty"`
+	OIRankingData  *provider.OIRankingData            `json:"oi_ranking_data,omitempty"` // Market-wide OI ranking data
+	Timeframes     []string                           `json:"timeframes,omitempty"`
+	StrategyConfig *store.StrategyConfig              `json:"strategy_config,omitempty"`
 }
 
 // Decision AI trading decision
@@ -206,14 +204,8 @@ func (e *StrategyEngine) GetConfig() *store.StrategyConfig {
 // ============================================================================
 
 // GetFullDecisionWithStrategy uses StrategyEngine to get AI decision (unified prompt generation)
-func GetFullDecisionWithStrategy(ctx *Context, mcpClient mcp.AIClient, engine *StrategyEngine, variant string) (*FullDecision, error) {
-	if ctx == nil {
-		return nil, fmt.Errorf("context is nil")
-	}
-	if engine == nil {
-		defaultConfig := store.GetDefaultStrategyConfig("en")
-		engine = NewStrategyEngine(&defaultConfig)
-	}
+func GetFullDecisionWithStrategy(ctx *Context, mcpClient mcp.AIClient, variant string) (*FullDecision, error) {
+	engine := NewStrategyEngine(ctx.StrategyConfig)
 
 	// 1. Fetch market data using strategy config
 	if len(ctx.MarketDataMap) == 0 {

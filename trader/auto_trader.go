@@ -483,7 +483,7 @@ func (at *AutoTrader) runCycle() error {
 
 	// 5. Use strategy engine to call AI for decision
 	logger.Infof("🤖 Requesting AI analysis and decision... [Strategy Engine]")
-	aiDecision, err := decision.GetFullDecisionWithStrategy(ctx, at.mcpClient, at.strategyEngine, "balanced")
+	aiDecision, err := decision.GetFullDecisionWithStrategy(ctx, at.mcpClient, "balanced")
 
 	if aiDecision != nil && aiDecision.AIRequestDurationMs > 0 {
 		record.AIRequestDurationMs = aiDecision.AIRequestDurationMs
@@ -756,13 +756,10 @@ func (at *AutoTrader) buildTradingContext() (*decision.Context, error) {
 
 	// 6. Build context
 	ctx := &decision.Context{
-		CurrentTime:     time.Now().UTC().Format("2006-01-02 15:04:05 UTC"),
-		RuntimeMinutes:  int(time.Since(at.startTime).Minutes()),
-		CallCount:       at.callCount,
-		BTCETHLeverage:  btcEthLeverage,
-		AltcoinLeverage: altcoinLeverage,
-		MinConfidence:   strategyConfig.RiskControl.MinConfidence,
-		Timeframes:      []string{strategyConfig.Indicators.Klines.PrimaryTimeframe},
+		CurrentTime:    time.Now().UTC().Format("2006-01-02 15:04:05 UTC"),
+		RuntimeMinutes: int(time.Since(at.startTime).Minutes()),
+		CallCount:      at.callCount,
+		Timeframes:     []string{strategyConfig.Indicators.Klines.PrimaryTimeframe},
 		Account: decision.AccountInfo{
 			TotalEquity:      totalEquity,
 			AvailableBalance: availableBalance,
@@ -775,6 +772,7 @@ func (at *AutoTrader) buildTradingContext() (*decision.Context, error) {
 		},
 		Positions:      positionInfos,
 		CandidateCoins: candidateCoins,
+		StrategyConfig: strategyConfig,
 	}
 
 	// 7. Add recent closed trades (if store is available)

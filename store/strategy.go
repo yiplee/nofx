@@ -36,7 +36,7 @@ type StrategyConfig struct {
 	// risk control configuration
 	RiskControl RiskControlConfig `json:"risk_control"`
 	// editable sections of System Prompt
-	PromptSections PromptSectionsConfig `json:"prompt_sections,omitempty"`
+	PromptSections PromptSectionsConfig `json:"prompt_sections"`
 }
 
 // PromptSectionsConfig editable sections of System Prompt

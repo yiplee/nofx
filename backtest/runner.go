@@ -503,18 +503,17 @@ func (r *Runner) buildDecisionContext(ts int64, marketData map[string]*market.Da
 
 	runtime := int((ts - int64(r.cfg.StartTS*1000)) / 60000)
 	ctx := &decision.Context{
-		CurrentTime:     time.UnixMilli(ts).UTC().Format("2006-01-02 15:04:05 UTC"),
-		RuntimeMinutes:  runtime,
-		CallCount:       callCount,
-		Account:         accountInfo,
-		Positions:       positions,
-		CandidateCoins:  candidateCoins,
-		PromptVariant:   r.cfg.PromptVariant,
-		MarketDataMap:   marketData,
-		MultiTFMarket:   multiTF,
-		BTCETHLeverage:  r.cfg.Leverage.BTCETHLeverage,
-		AltcoinLeverage: r.cfg.Leverage.AltcoinLeverage,
-		Timeframes:      r.cfg.Timeframes,
+		CurrentTime:    time.UnixMilli(ts).UTC().Format("2006-01-02 15:04:05 UTC"),
+		RuntimeMinutes: runtime,
+		CallCount:      callCount,
+		Account:        accountInfo,
+		Positions:      positions,
+		CandidateCoins: candidateCoins,
+		PromptVariant:  r.cfg.PromptVariant,
+		MarketDataMap:  marketData,
+		MultiTFMarket:  multiTF,
+		Timeframes:     r.cfg.Timeframes,
+		StrategyConfig: r.strategyEngine.GetConfig(),
 	}
 
 	// Fetch quantitative data if enabled in strategy (uses current data as approximation)
@@ -584,7 +583,6 @@ func (r *Runner) invokeAIWithRetry(ctx *decision.Context) (*decision.FullDecisio
 		fd, err := decision.GetFullDecisionWithStrategy(
 			ctx,
 			r.mcpClient,
-			r.strategyEngine,
 			r.cfg.PromptVariant,
 		)
 		if err == nil {

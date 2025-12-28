@@ -363,8 +363,8 @@ func (s *AutoTraderTestSuite) TestBuildTradingContext() {
 	// Verify core fields
 	s.Equal(10100.0, ctx.Account.TotalEquity) // 10000 + 100
 	s.Equal(8000.0, ctx.Account.AvailableBalance)
-	s.Equal(10, ctx.BTCETHLeverage)
-	s.Equal(5, ctx.AltcoinLeverage)
+	s.Equal(10, ctx.StrategyConfig.RiskControl.BTCETHMaxLeverage)
+	s.Equal(5, ctx.StrategyConfig.RiskControl.AltcoinMaxLeverage)
 }
 
 // ============================================================
