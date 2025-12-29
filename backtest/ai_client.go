@@ -29,6 +29,13 @@ func configureMCPClient(cfg BacktestConfig, base mcp.AIClient) (mcp.AIClient, er
 		ds := mcp.NewDeepSeekClientWithOptions()
 		ds.(*mcp.DeepSeekClient).SetAPIKey(cfg.AICfg.APIKey, cfg.AICfg.BaseURL, cfg.AICfg.Model)
 		return ds, nil
+	case "quant":
+		if cfg.AICfg.APIKey == "" {
+			return nil, fmt.Errorf("quant provider requires api key")
+		}
+		qc := mcp.NewQuantClientWithOptions()
+		qc.(*mcp.QuantClient).SetAPIKey(cfg.AICfg.APIKey, cfg.AICfg.BaseURL, cfg.AICfg.Model)
+		return qc, nil
 	case "qwen":
 		if cfg.AICfg.APIKey == "" {
 			return nil, fmt.Errorf("qwen provider requires api key")
