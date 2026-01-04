@@ -46,6 +46,9 @@ func getBrOrderID() string {
 type FuturesTrader struct {
 	client *futures.Client
 
+	symbols map[string]futures.Symbol
+	mu      sync.RWMutex
+
 	// Balance cache
 	cachedBalance     map[string]interface{}
 	balanceCacheTime  time.Time
@@ -89,6 +92,36 @@ func NewFuturesTrader(apiKey, secretKey string, userId string) *FuturesTrader {
 	}
 
 	return trader
+}
+
+func (t *FuturesTrader) GetSymbol(symbol string) (futures.Symbol, error) {
+	t.mu.RLock()
+	v, ok := t.symbols[symbol]
+	t.mu.RUnlock()
+	if ok {
+		return v, nil
+	}
+
+	symbolInfo, err := t.client.NewExchangeInfoService().Do(context.Background())
+	if err != nil {
+		return futures.Symbol{}, fmt.Errorf("failed to get symbol info: %w", err)
+	}
+
+	t.mu.Lock()
+	for _, s := range symbolInfo.Symbols {
+		t.symbols[s.Symbol] = s
+		if s.Symbol == symbol {
+			v = s
+			ok = true
+		}
+	}
+	t.mu.Unlock()
+
+	if !ok {
+		return futures.Symbol{}, fmt.Errorf("symbol %s not found", symbol)
+	}
+
+	return v, nil
 }
 
 // setDualSidePosition sets dual-side position mode (called during initialization)
@@ -333,10 +366,7 @@ func (t *FuturesTrader) OpenLong(symbol string, quantity float64, leverage int) 
 	// Note: Margin mode should be set by the caller (AutoTrader) before opening position via SetMarginMode
 
 	// Format quantity to correct precision
-	quantityStr, err := t.FormatQuantity(symbol, quantity)
-	if err != nil {
-		return nil, err
-	}
+	quantityStr, _ := t.FormatQuantity(symbol, quantity)
 
 	// Check if formatted quantity is 0 (prevent rounding errors)
 	quantityFloat, parseErr := strconv.ParseFloat(quantityStr, 64)
@@ -388,10 +418,7 @@ func (t *FuturesTrader) OpenShort(symbol string, quantity float64, leverage int)
 	// Note: Margin mode should be set by the caller (AutoTrader) before opening position via SetMarginMode
 
 	// Format quantity to correct precision
-	quantityStr, err := t.FormatQuantity(symbol, quantity)
-	if err != nil {
-		return nil, err
-	}
+	quantityStr, _ := t.FormatQuantity(symbol, quantity)
 
 	// Check if formatted quantity is 0 (prevent rounding errors)
 	quantityFloat, parseErr := strconv.ParseFloat(quantityStr, 64)
@@ -425,6 +452,7 @@ func (t *FuturesTrader) OpenShort(symbol string, quantity float64, leverage int)
 	result["orderId"] = order.OrderID
 	result["symbol"] = order.Symbol
 	result["status"] = order.Status
+	result["quantity"] = order.ExecutedQuantity
 	return result, nil
 }
 
@@ -450,10 +478,7 @@ func (t *FuturesTrader) CloseLong(symbol string, quantity float64) (map[string]i
 	}
 
 	// Format quantity
-	quantityStr, err := t.FormatQuantity(symbol, quantity)
-	if err != nil {
-		return nil, err
-	}
+	quantityStr, _ := t.FormatQuantity(symbol, quantity)
 
 	// Create market sell order (close long, using br ID)
 	order, err := t.client.NewCreateOrderService().
@@ -505,10 +530,7 @@ func (t *FuturesTrader) CloseShort(symbol string, quantity float64) (map[string]
 	}
 
 	// Format quantity
-	quantityStr, err := t.FormatQuantity(symbol, quantity)
-	if err != nil {
-		return nil, err
-	}
+	quantityStr, _ := t.FormatQuantity(symbol, quantity)
 
 	// Create market buy order (close short, using br ID)
 	order, err := t.client.NewCreateOrderService().
@@ -828,7 +850,7 @@ func (t *FuturesTrader) SetStopLoss(symbol string, positionSide string, quantity
 		Side(side).
 		PositionSide(posSide).
 		Type(futures.AlgoOrderTypeStopMarket).
-		TriggerPrice(fmt.Sprintf("%.8f", stopPrice)).
+		TriggerPrice(t.FormatPrice(symbol, stopPrice)).
 		WorkingType(futures.WorkingTypeContractPrice).
 		ClosePosition(true).
 		ClientAlgoId(getBrOrderID()).
@@ -869,7 +891,7 @@ func (t *FuturesTrader) SetTakeProfit(symbol string, positionSide string, quanti
 
 	// Check if trailing take profit is enabled
 	if t.useTrailingTakeProfit {
-		return t.setTrailingTakeProfit(symbol, side, posSide, takeProfitPrice)
+		return t.setTrailingTakeProfit(symbol, quantity, side, posSide, takeProfitPrice)
 	}
 
 	// Use new Algo Order API for regular take profit
@@ -878,7 +900,7 @@ func (t *FuturesTrader) SetTakeProfit(symbol string, positionSide string, quanti
 		Side(side).
 		PositionSide(posSide).
 		Type(futures.AlgoOrderTypeTakeProfitMarket).
-		ActivationPrice(fmt.Sprintf("%.8f", takeProfitPrice)).
+		ActivationPrice(t.FormatPrice(symbol, takeProfitPrice)).
 		WorkingType(futures.WorkingTypeContractPrice).
 		ClosePosition(true).
 		ClientAlgoId(getBrOrderID()).
@@ -893,21 +915,23 @@ func (t *FuturesTrader) SetTakeProfit(symbol string, positionSide string, quanti
 }
 
 // setTrailingTakeProfit sets trailing take-profit order using Algo Order API
-func (t *FuturesTrader) setTrailingTakeProfit(symbol string, side futures.SideType, posSide futures.PositionSideType, activationPrice float64) error {
+func (t *FuturesTrader) setTrailingTakeProfit(symbol string, quantity float64, side futures.SideType, posSide futures.PositionSideType, activationPrice float64) error {
 	// Format callback rate (Binance expects percentage as string, e.g., "1" for 1%)
 	callbackRateStr := fmt.Sprintf("%.1f", t.trailingCallbackRate)
+
+	quantityStr, _ := t.FormatQuantity(symbol, quantity)
 
 	// Use Algo Order API for trailing stop market order
 	// Note: When closePosition is true, quantity is not needed
 	_, err := t.client.NewCreateAlgoOrderService().
 		Symbol(symbol).
+		Quantity(quantityStr).
 		Side(side).
 		PositionSide(posSide).
 		Type(futures.AlgoOrderTypeTrailingStopMarket).
-		ActivationPrice(fmt.Sprintf("%.8f", activationPrice)).
+		ActivationPrice(t.FormatPrice(symbol, activationPrice)).
 		CallbackRate(callbackRateStr).
 		WorkingType(futures.WorkingTypeContractPrice).
-		ClosePosition(true).
 		ClientAlgoId(getBrOrderID()).
 		Do(context.Background())
 
@@ -947,27 +971,31 @@ func (t *FuturesTrader) CheckMinNotional(symbol string, quantity float64) error 
 
 // GetSymbolPrecision gets the quantity precision for a trading pair
 func (t *FuturesTrader) GetSymbolPrecision(symbol string) (int, error) {
-	exchangeInfo, err := t.client.NewExchangeInfoService().Do(context.Background())
+	s, err := t.GetSymbol(symbol)
 	if err != nil {
-		return 0, fmt.Errorf("failed to get trading rules: %w", err)
+		return 0, err
 	}
 
-	for _, s := range exchangeInfo.Symbols {
-		if s.Symbol == symbol {
-			// Get precision from LOT_SIZE filter
-			for _, filter := range s.Filters {
-				if filter["filterType"] == "LOT_SIZE" {
-					stepSize := filter["stepSize"].(string)
-					precision := calculatePrecision(stepSize)
-					logger.Infof("  %s quantity precision: %d (stepSize: %s)", symbol, precision, stepSize)
-					return precision, nil
-				}
-			}
-		}
+	if f := s.LotSizeFilter(); f != nil {
+		return calculatePrecision(f.StepSize), nil
 	}
 
 	logger.Infof("  ⚠ %s precision information not found, using default precision 3", symbol)
 	return 3, nil // Default precision is 3
+}
+
+func (t *FuturesTrader) GetSymbolPricePrecision(symbol string) (int, error) {
+	s, err := t.GetSymbol(symbol)
+	if err != nil {
+		return 0, err
+	}
+
+	if f := s.PriceFilter(); f != nil {
+		return calculatePrecision(f.TickSize), nil
+	}
+
+	logger.Infof("  ⚠ %s price precision information not found, using default precision 8", symbol)
+	return 4, nil // Default precision is 4
 }
 
 // calculatePrecision calculates precision from stepSize
@@ -1023,6 +1051,17 @@ func (t *FuturesTrader) FormatQuantity(symbol string, quantity float64) (string,
 
 	format := fmt.Sprintf("%%.%df", precision)
 	return fmt.Sprintf(format, quantity), nil
+}
+
+func (t *FuturesTrader) FormatPrice(symbol string, price float64) string {
+	precision, err := t.GetSymbolPricePrecision(symbol)
+	if err != nil {
+		// If retrieval fails, use default format
+		return fmt.Sprintf("%.4f", price)
+	}
+
+	format := fmt.Sprintf("%%.%df", precision)
+	return fmt.Sprintf(format, price)
 }
 
 // Helper functions
