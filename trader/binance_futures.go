@@ -80,6 +80,7 @@ func NewFuturesTrader(apiKey, secretKey string, userId string) *FuturesTrader {
 	syncBinanceServerTime(client)
 	trader := &FuturesTrader{
 		client:                client,
+		symbols:               make(map[string]futures.Symbol),
 		cacheDuration:         15 * time.Second, // 15-second cache
 		useTrailingTakeProfit: false,            // Default: use market take profit
 		trailingCallbackRate:  1.0,              // Default: 1% callback rate
