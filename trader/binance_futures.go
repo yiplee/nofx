@@ -937,7 +937,7 @@ func (t *FuturesTrader) setTrailingTakeProfit(symbol string, quantity float64, s
 		Side(side).
 		PositionSide(posSide).
 		Type(futures.AlgoOrderTypeTrailingStopMarket).
-		TriggerPrice(priceStr).
+		ActivatePrice(priceStr).
 		CallbackRate(callbackRateStr).
 		WorkingType(futures.WorkingTypeContractPrice).
 		ClientAlgoId(getBrOrderID()).
@@ -947,7 +947,7 @@ func (t *FuturesTrader) setTrailingTakeProfit(symbol string, quantity float64, s
 		return fmt.Errorf("failed to set trailing take-profit: %w", err)
 	}
 
-	logger.Infof("✓ Trailing take-profit set (Algo Order):symbol %s,quantity %s, activation price %s, callback rate %.2f%%", symbol, quantityStr, activationPriceStr, t.trailingCallbackRate)
+	logger.Infof("✓ Trailing take-profit set (Algo Order):symbol %s,quantity %s, activation price %s, callback rate %.2f%%", symbol, quantityStr, priceStr, t.trailingCallbackRate)
 	logger.Infof("✓ Algo ID: %s", order.ClientAlgoId)
 	return nil
 }

@@ -20,6 +20,8 @@ require (
 	modernc.org/sqlite v1.40.0
 )
 
+replace github.com/adshao/go-binance/v2 => github.com/yiplee/go-binance/v2 v2.0.0-20260104134631-dfe0040ee816
+
 require (
 	github.com/armon/go-radix v1.0.0 // indirect
 	github.com/bitly/go-simplejson v0.5.1 // indirect
