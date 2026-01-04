@@ -845,13 +845,15 @@ func (t *FuturesTrader) SetStopLoss(symbol string, positionSide string, quantity
 		posSide = futures.PositionSideTypeShort
 	}
 
+	triggerPriceStr := t.FormatPrice(symbol, stopPrice)
+
 	// Use new Algo Order API
-	_, err := t.client.NewCreateAlgoOrderService().
+	order, err := t.client.NewCreateAlgoOrderService().
 		Symbol(symbol).
 		Side(side).
 		PositionSide(posSide).
 		Type(futures.AlgoOrderTypeStopMarket).
-		TriggerPrice(t.FormatPrice(symbol, stopPrice)).
+		TriggerPrice(triggerPriceStr).
 		WorkingType(futures.WorkingTypeContractPrice).
 		ClosePosition(true).
 		ClientAlgoId(getBrOrderID()).
@@ -861,7 +863,8 @@ func (t *FuturesTrader) SetStopLoss(symbol string, positionSide string, quantity
 		return fmt.Errorf("failed to set stop-loss: %w", err)
 	}
 
-	logger.Infof("  Stop-loss price set (Algo Order): %.4f", stopPrice)
+	logger.Infof("✓ Stop-loss price set (Algo Order):symbol %s, trigger price %s", symbol, triggerPriceStr)
+	logger.Infof("✓ Algo ID: %s", order.ClientAlgoId)
 	return nil
 }
 
@@ -895,13 +898,15 @@ func (t *FuturesTrader) SetTakeProfit(symbol string, positionSide string, quanti
 		return t.setTrailingTakeProfit(symbol, quantity, side, posSide, takeProfitPrice)
 	}
 
+	triggerPriceStr := t.FormatPrice(symbol, takeProfitPrice)
+
 	// Use new Algo Order API for regular take profit
-	_, err := t.client.NewCreateAlgoOrderService().
+	order, err := t.client.NewCreateAlgoOrderService().
 		Symbol(symbol).
 		Side(side).
 		PositionSide(posSide).
 		Type(futures.AlgoOrderTypeTakeProfitMarket).
-		ActivationPrice(t.FormatPrice(symbol, takeProfitPrice)).
+		TriggerPrice(triggerPriceStr).
 		WorkingType(futures.WorkingTypeContractPrice).
 		ClosePosition(true).
 		ClientAlgoId(getBrOrderID()).
@@ -911,7 +916,8 @@ func (t *FuturesTrader) SetTakeProfit(symbol string, positionSide string, quanti
 		return fmt.Errorf("failed to set take-profit: %w", err)
 	}
 
-	logger.Infof("  Take-profit price set (Algo Order): %.4f", takeProfitPrice)
+	logger.Infof("✓ Take-profit price set (Algo Order):symbol %s, trigger price %s", symbol, triggerPriceStr)
+	logger.Infof("✓ Algo ID: %s", order.ClientAlgoId)
 	return nil
 }
 
@@ -921,16 +927,17 @@ func (t *FuturesTrader) setTrailingTakeProfit(symbol string, quantity float64, s
 	callbackRateStr := fmt.Sprintf("%.1f", t.trailingCallbackRate)
 
 	quantityStr, _ := t.FormatQuantity(symbol, quantity)
+	activationPriceStr := t.FormatPrice(symbol, activationPrice)
 
 	// Use Algo Order API for trailing stop market order
 	// Note: When closePosition is true, quantity is not needed
-	_, err := t.client.NewCreateAlgoOrderService().
+	order, err := t.client.NewCreateAlgoOrderService().
 		Symbol(symbol).
 		Quantity(quantityStr).
 		Side(side).
 		PositionSide(posSide).
 		Type(futures.AlgoOrderTypeTrailingStopMarket).
-		ActivationPrice(t.FormatPrice(symbol, activationPrice)).
+		ActivationPrice(activationPriceStr).
 		CallbackRate(callbackRateStr).
 		WorkingType(futures.WorkingTypeContractPrice).
 		ClientAlgoId(getBrOrderID()).
@@ -940,7 +947,8 @@ func (t *FuturesTrader) setTrailingTakeProfit(symbol string, quantity float64, s
 		return fmt.Errorf("failed to set trailing take-profit: %w", err)
 	}
 
-	logger.Infof("  Trailing take-profit set (Algo Order): activation price %.4f, callback rate %.2f%%", activationPrice, t.trailingCallbackRate)
+	logger.Infof("✓ Trailing take-profit set (Algo Order):symbol %s,quantity %s, activation price %s, callback rate %.2f%%", symbol, quantityStr, activationPriceStr, t.trailingCallbackRate)
+	logger.Infof("✓ Algo ID: %s", order.ClientAlgoId)
 	return nil
 }
 
