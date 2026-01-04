@@ -922,12 +922,12 @@ func (t *FuturesTrader) SetTakeProfit(symbol string, positionSide string, quanti
 }
 
 // setTrailingTakeProfit sets trailing take-profit order using Algo Order API
-func (t *FuturesTrader) setTrailingTakeProfit(symbol string, quantity float64, side futures.SideType, posSide futures.PositionSideType, activationPrice float64) error {
+func (t *FuturesTrader) setTrailingTakeProfit(symbol string, quantity float64, side futures.SideType, posSide futures.PositionSideType, price float64) error {
 	// Format callback rate (Binance expects percentage as string, e.g., "1" for 1%)
 	callbackRateStr := fmt.Sprintf("%.1f", t.trailingCallbackRate)
 
 	quantityStr, _ := t.FormatQuantity(symbol, quantity)
-	activationPriceStr := t.FormatPrice(symbol, activationPrice)
+	priceStr := t.FormatPrice(symbol, price)
 
 	// Use Algo Order API for trailing stop market order
 	// Note: When closePosition is true, quantity is not needed
@@ -937,7 +937,7 @@ func (t *FuturesTrader) setTrailingTakeProfit(symbol string, quantity float64, s
 		Side(side).
 		PositionSide(posSide).
 		Type(futures.AlgoOrderTypeTrailingStopMarket).
-		ActivationPrice(activationPriceStr).
+		TriggerPrice(priceStr).
 		CallbackRate(callbackRateStr).
 		WorkingType(futures.WorkingTypeContractPrice).
 		ClientAlgoId(getBrOrderID()).
