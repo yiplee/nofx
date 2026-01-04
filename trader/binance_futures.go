@@ -941,7 +941,6 @@ func (t *FuturesTrader) setTrailingTakeProfit(symbol string, quantity float64, s
 		CallbackRate(callbackRateStr).
 		WorkingType(futures.WorkingTypeContractPrice).
 		ClientAlgoId(getBrOrderID()).
-		ReduceOnly(true).
 		Do(context.Background())
 
 	if err != nil {
