@@ -94,8 +94,18 @@ func (df *DataFeed) loadAll() error {
 	}
 
 	// Generate backtest progress timeline using the primary timeframe of the first symbol
+	if len(df.symbols) == 0 {
+		return fmt.Errorf("no symbols configured")
+	}
 	firstSymbol := df.symbols[0]
-	primarySeries := df.symbolSeries[firstSymbol].byTF[df.primaryTF]
+	ss, ok := df.symbolSeries[firstSymbol]
+	if !ok {
+		return fmt.Errorf("symbol %s not found in symbolSeries", firstSymbol)
+	}
+	primarySeries, ok := ss.byTF[df.primaryTF]
+	if !ok || primarySeries == nil {
+		return fmt.Errorf("primary timeframe %s not found for symbol %s (available: %v)", df.primaryTF, firstSymbol, getTimeframeKeys(ss.byTF))
+	}
 	startMs := start.UnixMilli()
 	endMs := end.UnixMilli()
 	for _, ts := range primarySeries.closeTimes {
@@ -191,4 +201,12 @@ func (df *DataFeed) decisionBarSnapshot(symbol string, ts int64) (*market.Kline,
 		next = &series.klines[idx+1]
 	}
 	return curr, next
+}
+
+func getTimeframeKeys(byTF map[string]*timeframeSeries) []string {
+	keys := make([]string, 0, len(byTF))
+	for k := range byTF {
+		keys = append(keys, k)
+	}
+	return keys
 }

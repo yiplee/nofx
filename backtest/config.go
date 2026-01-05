@@ -2,6 +2,7 @@ package backtest
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -102,6 +103,11 @@ func (cfg *BacktestConfig) Validate() error {
 		return fmt.Errorf("invalid decision_timeframe: %w", err)
 	}
 	cfg.DecisionTimeframe = normalizedDecision
+
+	// Validate that DecisionTimeframe is in Timeframes list using slices.Contains
+	if !slices.Contains(cfg.Timeframes, cfg.DecisionTimeframe) {
+		return fmt.Errorf("decision_timeframe '%s' must be one of the configured timeframes: %v", cfg.DecisionTimeframe, cfg.Timeframes)
+	}
 
 	if cfg.DecisionCadenceNBars <= 0 {
 		cfg.DecisionCadenceNBars = 20

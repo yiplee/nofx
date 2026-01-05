@@ -102,6 +102,11 @@ func cloneBaseClient(base mcp.AIClient) *mcp.Client {
 			cp := *c.Client
 			return &cp
 		}
+	case *mcp.QuantClient:
+		if c != nil && c.Client != nil {
+			cp := *c.Client
+			return &cp
+		}
 	case *mcp.QwenClient:
 		if c != nil && c.Client != nil {
 			cp := *c.Client
