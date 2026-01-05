@@ -470,6 +470,74 @@ func (r *Runner) stepOnce() error {
 	return nil
 }
 
+// limitTimeframeSeriesData limits the TimeframeSeriesData to the latest N klines
+func limitTimeframeSeriesData(data *market.TimeframeSeriesData, maxCount int) *market.TimeframeSeriesData {
+	if data == nil || maxCount <= 0 {
+		return data
+	}
+
+	totalKlines := len(data.Klines)
+	if totalKlines <= maxCount {
+		return data
+	}
+
+	// Keep only the latest N klines
+	start := totalKlines - maxCount
+
+	limited := &market.TimeframeSeriesData{
+		Timeframe:   data.Timeframe,
+		Klines:      make([]market.KlineBar, 0, maxCount),
+		MidPrices:   make([]float64, 0, maxCount),
+		EMA20Values: make([]float64, 0, maxCount),
+		EMA50Values: make([]float64, 0, maxCount),
+		MACDValues:  make([]float64, 0, maxCount),
+		RSI7Values:  make([]float64, 0, maxCount),
+		RSI14Values: make([]float64, 0, maxCount),
+		Volume:      make([]float64, 0, maxCount),
+		ATR14:       data.ATR14,
+		BOLLUpper:   make([]float64, 0, maxCount),
+		BOLLMiddle:  make([]float64, 0, maxCount),
+		BOLLLower:   make([]float64, 0, maxCount),
+	}
+
+	// Copy klines (keep only the latest N)
+	limited.Klines = append(limited.Klines, data.Klines[start:]...)
+
+	// Copy arrays (only if they have the same length as klines)
+	if len(data.MidPrices) == totalKlines {
+		limited.MidPrices = data.MidPrices[start:]
+	}
+	if len(data.EMA20Values) == totalKlines {
+		limited.EMA20Values = data.EMA20Values[start:]
+	}
+	if len(data.EMA50Values) == totalKlines {
+		limited.EMA50Values = data.EMA50Values[start:]
+	}
+	if len(data.MACDValues) == totalKlines {
+		limited.MACDValues = data.MACDValues[start:]
+	}
+	if len(data.RSI7Values) == totalKlines {
+		limited.RSI7Values = data.RSI7Values[start:]
+	}
+	if len(data.RSI14Values) == totalKlines {
+		limited.RSI14Values = data.RSI14Values[start:]
+	}
+	if len(data.Volume) == totalKlines {
+		limited.Volume = data.Volume[start:]
+	}
+	if len(data.BOLLUpper) == totalKlines {
+		limited.BOLLUpper = data.BOLLUpper[start:]
+	}
+	if len(data.BOLLMiddle) == totalKlines {
+		limited.BOLLMiddle = data.BOLLMiddle[start:]
+	}
+	if len(data.BOLLLower) == totalKlines {
+		limited.BOLLLower = data.BOLLLower[start:]
+	}
+
+	return limited
+}
+
 func (r *Runner) buildDecisionContext(ts int64, marketData map[string]*market.Data, multiTF map[string]map[string]*market.Data, priceMap map[string]float64, callCount int) (*decision.Context, *store.DecisionRecord, error) {
 	equity, unrealized, _ := r.account.TotalEquity(priceMap)
 	available := r.account.Cash()
@@ -563,6 +631,50 @@ func (r *Runner) buildDecisionContext(ts int64, marketData map[string]*market.Da
 		mergedMarketData[symbol] = &merged
 	}
 
+	// Limit kline count based on strategy config
+	strategyConfig := r.strategyEngine.GetConfig()
+	primaryCount := strategyConfig.Indicators.Klines.PrimaryCount
+	longerCount := strategyConfig.Indicators.Klines.LongerCount
+	primaryTimeframe := strategyConfig.Indicators.Klines.PrimaryTimeframe
+	longerTimeframe := strategyConfig.Indicators.Klines.LongerTimeframe
+
+	// Apply default values if not set
+	if primaryCount <= 0 {
+		primaryCount = 30
+	}
+	if longerCount <= 0 {
+		longerCount = 10
+	}
+
+	// Limit klines for each symbol's timeframe data
+	for symbol, data := range mergedMarketData {
+		if data.TimeframeData == nil {
+			continue
+		}
+		for tf, tfData := range data.TimeframeData {
+			if tfData == nil {
+				continue
+			}
+			// Determine which count to use based on timeframe
+			var maxCount int
+			if tf == primaryTimeframe {
+				maxCount = primaryCount
+			} else if tf == longerTimeframe {
+				maxCount = longerCount
+			} else {
+				// For other timeframes, use primary count as default
+				maxCount = primaryCount
+			}
+
+			// Limit klines if exceeds maxCount
+			if len(tfData.Klines) > maxCount {
+				limitedData := limitTimeframeSeriesData(tfData, maxCount)
+				data.TimeframeData[tf] = limitedData
+				logger.Infof("📉 Limited %s %s klines from %d to %d (strategy config)", symbol, tf, len(tfData.Klines), maxCount)
+			}
+		}
+	}
+
 	ctx := &decision.Context{
 		CurrentTime:    time.UnixMilli(ts).UTC().Format("2006-01-02 15:04:05 UTC"),
 		RuntimeMinutes: runtime,
@@ -578,7 +690,6 @@ func (r *Runner) buildDecisionContext(ts int64, marketData map[string]*market.Da
 	}
 
 	// Fetch quantitative data if enabled in strategy (uses current data as approximation)
-	strategyConfig := r.strategyEngine.GetConfig()
 	if strategyConfig.Indicators.EnableQuantData && strategyConfig.Indicators.QuantDataAPIURL != "" {
 		// Collect symbols to query (candidate coins + position coins)
 		symbolSet := make(map[string]bool)
