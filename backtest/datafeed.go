@@ -5,6 +5,7 @@ import (
 	"sort"
 	"time"
 
+	"nofx/logger"
 	"nofx/market"
 )
 
@@ -80,6 +81,8 @@ func (df *DataFeed) loadAll() error {
 			if len(klines) == 0 {
 				return fmt.Errorf("no klines for %s %s", symbol, tf)
 			}
+
+			logger.Infof("[backtest] fetched %d klines for %s %s from %s to %s", len(klines), symbol, tf, fetchStart, fetchEnd)
 
 			series := &timeframeSeries{
 				klines:     klines,
