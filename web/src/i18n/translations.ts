@@ -114,6 +114,7 @@ export const translations = {
         stop: 'Stop',
       },
       states: {
+        created: 'Created',
         running: 'Running',
         paused: 'Paused',
         completed: 'Completed',
@@ -1277,6 +1278,7 @@ export const translations = {
         stop: '停止',
       },
       states: {
+        created: '已创建',
         running: '运行中',
         paused: '已暂停',
         completed: '已完成',
