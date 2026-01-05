@@ -777,7 +777,7 @@ export function BacktestPage() {
   // Data fetching
   const { data: runsResp, mutate: refreshRuns } = useSWR(['backtest-runs'], () =>
     api.getBacktestRuns({ limit: 100, offset: 0 })
-  , { refreshInterval: 5000 })
+    , { refreshInterval: 5000 })
   const runs = runsResp?.items ?? []
 
   const { data: aiModels } = useSWR<AIModel[]>('ai-models', api.getModelConfigs, { refreshInterval: 30000 })
@@ -893,6 +893,16 @@ export function BacktestPage() {
       setSelectedRunId(runs[0].run_id)
     }
   }, [runs, selectedRunId])
+
+  // Sync decisionTf with timeframes: if current decisionTf is not in timeframes, use first timeframe
+  useEffect(() => {
+    setFormState((prev) => {
+      if (prev.timeframes.length > 0 && !prev.timeframes.includes(prev.decisionTf)) {
+        return { ...prev, decisionTf: prev.timeframes[0] }
+      }
+      return prev
+    })
+  }, [formState.timeframes])
 
   // Handlers
   const handleFormChange = (key: string, value: string | number | boolean | string[]) => {
