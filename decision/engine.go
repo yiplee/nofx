@@ -227,6 +227,25 @@ func GetFullDecisionWithStrategy(ctx *Context, mcpClient mcp.AIClient, variant s
 	// Add context to MCP client (for debugging, etc.)
 	if withMeta, ok := mcpClient.(mcp.AIClientWithMeta); ok {
 		logger.Info("📊 Adding context to MCP client")
+		// Log market data for debugging
+		for symbol, data := range ctx.MarketDataMap {
+			if data != nil {
+				if data.TimeframeData != nil {
+					logger.Infof("📊 MarketDataMap[%s] has %d timeframes", symbol, len(data.TimeframeData))
+					for tf, tfData := range data.TimeframeData {
+						if tfData != nil {
+							logger.Infof("📊   - %s: %d klines", tf, len(tfData.Klines))
+						} else {
+							logger.Warnf("⚠️   - %s: tfData is nil", tf)
+						}
+					}
+				} else {
+					logger.Warnf("⚠️  MarketDataMap[%s].TimeframeData is nil", symbol)
+				}
+			} else {
+				logger.Warnf("⚠️  MarketDataMap[%s] is nil", symbol)
+			}
+		}
 		mcpClient = withMeta.WithMeta("context", ctx)
 	}
 

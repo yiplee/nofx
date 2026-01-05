@@ -698,7 +698,8 @@ func Normalize(symbol string) string {
 }
 
 // BuildDataFromKlines constructs market data snapshot from preloaded K-line series (for backtesting/simulation).
-func BuildDataFromKlines(symbol string, primary []Kline, longer []Kline) (*Data, error) {
+// primaryTimeframe: the timeframe identifier for the primary series (e.g., "1h", "5m")
+func BuildDataFromKlines(symbol string, primary []Kline, longer []Kline, primaryTimeframe string) (*Data, error) {
 	if len(primary) == 0 {
 		return nil, fmt.Errorf("primary series is empty")
 	}
@@ -706,6 +707,34 @@ func BuildDataFromKlines(symbol string, primary []Kline, longer []Kline) (*Data,
 	symbol = Normalize(symbol)
 	current := primary[len(primary)-1]
 	currentPrice := current.Close
+
+	// Determine primary timeframe if not provided
+	if primaryTimeframe == "" {
+		// Try to infer from kline interval (approximate)
+		if len(primary) >= 2 {
+			interval := primary[len(primary)-1].OpenTime - primary[len(primary)-2].OpenTime
+			primaryTimeframe = inferTimeframeFromInterval(interval)
+		} else {
+			primaryTimeframe = "5m" // default fallback
+		}
+	}
+
+	// Build TimeframeData map
+	timeframeData := make(map[string]*TimeframeSeriesData)
+	
+	// Calculate primary timeframe series data (use all available klines)
+	primarySeriesData := calculateTimeframeSeries(primary, primaryTimeframe, len(primary))
+	timeframeData[primaryTimeframe] = primarySeriesData
+
+	// If longer timeframe is provided, calculate it too
+	if len(longer) > 0 {
+		longerTimeframe := "4h" // default longer timeframe
+		if primaryTimeframe == "1h" || primaryTimeframe == "4h" {
+			longerTimeframe = "1d"
+		}
+		longerSeriesData := calculateTimeframeSeries(longer, longerTimeframe, len(longer))
+		timeframeData[longerTimeframe] = longerSeriesData
+	}
 
 	data := &Data{
 		Symbol:            symbol,
@@ -719,6 +748,7 @@ func BuildDataFromKlines(symbol string, primary []Kline, longer []Kline) (*Data,
 		FundingRate:       0,
 		IntradaySeries:    calculateIntradaySeries(primary),
 		LongerTermContext: nil,
+		TimeframeData:     timeframeData,
 	}
 
 	if len(longer) > 0 {
@@ -726,6 +756,42 @@ func BuildDataFromKlines(symbol string, primary []Kline, longer []Kline) (*Data,
 	}
 
 	return data, nil
+}
+
+// inferTimeframeFromInterval attempts to infer timeframe string from kline interval in milliseconds
+func inferTimeframeFromInterval(intervalMs int64) string {
+	intervalMinutes := intervalMs / (1000 * 60)
+	switch {
+	case intervalMinutes == 1:
+		return "1m"
+	case intervalMinutes == 3:
+		return "3m"
+	case intervalMinutes == 5:
+		return "5m"
+	case intervalMinutes == 15:
+		return "15m"
+	case intervalMinutes == 30:
+		return "30m"
+	case intervalMinutes == 60:
+		return "1h"
+	case intervalMinutes == 240:
+		return "4h"
+	case intervalMinutes == 1440:
+		return "1d"
+	default:
+		// Fallback: try to match closest
+		if intervalMinutes < 5 {
+			return "1m"
+		} else if intervalMinutes < 15 {
+			return "5m"
+		} else if intervalMinutes < 60 {
+			return "15m"
+		} else if intervalMinutes < 240 {
+			return "1h"
+		} else {
+			return "4h"
+		}
+	}
 }
 
 func priceChangeFromSeries(series []Kline, duration time.Duration) float64 {

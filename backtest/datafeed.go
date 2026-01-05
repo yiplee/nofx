@@ -166,7 +166,7 @@ func (df *DataFeed) BuildMarketData(ts int64) (map[string]*market.Data, map[stri
 			if df.longerTF != "" && df.longerTF != tf {
 				longer = df.sliceUpTo(symbol, df.longerTF, ts)
 			}
-			data, err := market.BuildDataFromKlines(symbol, series, longer)
+			data, err := market.BuildDataFromKlines(symbol, series, longer, tf)
 			if err != nil {
 				return nil, nil, err
 			}

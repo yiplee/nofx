@@ -502,36 +502,56 @@ func (r *Runner) buildDecisionContext(ts int64, marketData map[string]*market.Da
 	}
 
 	runtime := int((ts - int64(r.cfg.StartTS*1000)) / 60000)
-	
+
 	// Merge multiTF data into MarketDataMap for quant client compatibility
 	// Quant client expects MarketDataMap[symbol].TimeframeData[timeframe] to contain all timeframes
 	mergedMarketData := make(map[string]*market.Data, len(marketData))
 	for symbol, primaryData := range marketData {
 		// Start with a copy of primary data
 		merged := *primaryData
-		
+
 		// Initialize TimeframeData if nil
 		if merged.TimeframeData == nil {
 			merged.TimeframeData = make(map[string]*market.TimeframeSeriesData)
 		}
-		
+
 		// Merge all timeframe data from multiTF
 		if symbolTFs, ok := multiTF[symbol]; ok {
-			for _, tfData := range symbolTFs {
-				if tfData != nil && tfData.TimeframeData != nil {
-					// Copy timeframe data from each timeframe's Data structure
-					for tfKey, tfSeriesData := range tfData.TimeframeData {
-						if tfSeriesData != nil {
-							merged.TimeframeData[tfKey] = tfSeriesData
+			for tf, tfData := range symbolTFs {
+				if tfData != nil {
+					// If tfData has TimeframeData, use it
+					if tfData.TimeframeData != nil {
+						for tfKey, tfSeriesData := range tfData.TimeframeData {
+							if tfSeriesData != nil {
+								merged.TimeframeData[tfKey] = tfSeriesData
+							}
 						}
+					} else {
+						// If TimeframeData is nil, create it from the klines in this Data structure
+						// This handles the case where BuildDataFromKlines didn't populate TimeframeData
+						// We need to extract klines from the Data structure and create TimeframeSeriesData
+						// But Data structure doesn't store raw klines, so we need to get them from multiTF
+						// Actually, we should ensure BuildDataFromKlines always populates TimeframeData
+						logger.Warnf("⚠️  TimeframeData is nil for %s %s, this should not happen", symbol, tf)
 					}
 				}
 			}
 		}
-		
+
+		// Log merged data for debugging
+		if len(merged.TimeframeData) > 0 {
+			for tf, tfData := range merged.TimeframeData {
+				if tfData != nil {
+					logger.Infof("📊 Merged %s %s: %d klines", symbol, tf, len(tfData.Klines))
+				}
+			}
+		} else {
+			logger.Warnf("⚠️  No TimeframeData merged for %s", symbol)
+		}
+
 		mergedMarketData[symbol] = &merged
 	}
-	
+
 	ctx := &decision.Context{
 		CurrentTime:    time.UnixMilli(ts).UTC().Format("2006-01-02 15:04:05 UTC"),
 		RuntimeMinutes: runtime,
