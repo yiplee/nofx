@@ -76,33 +76,56 @@ func (c *APIClient) GetKlines(symbol, interval string, limit int) ([]Kline, erro
 }
 
 func (c *APIClient) GetKlinesRange(symbol, interval string, start, end time.Time) ([]Kline, error) {
-	req := c.client.NewKlinesService()
-	req.Symbol(symbol)
-	req.Interval(interval)
-	req.StartTime(start.UnixMilli())
-	req.EndTime(end.UnixMilli())
-	resp, err := req.Do(context.Background())
-	if err != nil {
-		return nil, err
-	}
+	const maxLimit = 1000 // Binance API maximum limit per request
+	startMs := start.UnixMilli()
+	endMs := end.UnixMilli()
 
-	klines := make([]Kline, len(resp))
-	for i, kline := range resp {
-		klines[i] = Kline{
-			OpenTime:            kline.OpenTime,
-			Open:                parseFloat(kline.Open),
-			High:                parseFloat(kline.High),
-			Low:                 parseFloat(kline.Low),
-			Close:               parseFloat(kline.Close),
-			Volume:              parseFloat(kline.Volume),
-			CloseTime:           kline.CloseTime,
-			QuoteVolume:         parseFloat(kline.QuoteAssetVolume),
-			Trades:              int(kline.TradeNum),
-			TakerBuyBaseVolume:  parseFloat(kline.TakerBuyBaseAssetVolume),
-			TakerBuyQuoteVolume: parseFloat(kline.TakerBuyQuoteAssetVolume),
+	var allKlines []Kline
+	ctx := context.Background()
+
+	for {
+		req := c.client.NewKlinesService()
+		req.Symbol(symbol)
+		req.Interval(interval)
+		req.StartTime(startMs)
+		req.EndTime(endMs)
+		req.Limit(maxLimit)
+
+		resp, err := req.Do(ctx)
+		if err != nil {
+			return nil, err
+		}
+
+		count := len(allKlines)
+		for _, kline := range resp {
+			item := Kline{
+				OpenTime:            kline.OpenTime,
+				Open:                parseFloat(kline.Open),
+				High:                parseFloat(kline.High),
+				Low:                 parseFloat(kline.Low),
+				Close:               parseFloat(kline.Close),
+				Volume:              parseFloat(kline.Volume),
+				CloseTime:           kline.CloseTime,
+				QuoteVolume:         parseFloat(kline.QuoteAssetVolume),
+				Trades:              int(kline.TradeNum),
+				TakerBuyBaseVolume:  parseFloat(kline.TakerBuyBaseAssetVolume),
+				TakerBuyQuoteVolume: parseFloat(kline.TakerBuyQuoteAssetVolume),
+			}
+
+			if startMs = kline.CloseTime; startMs > endMs {
+				break
+			}
+
+			allKlines = append(allKlines, item)
+		}
+
+		// If the number of klines added is less than the max limit, we've reached the end of the data
+		if len(allKlines)-count < maxLimit {
+			break
 		}
 	}
-	return klines, nil
+
+	return allKlines, nil
 }
 
 func GetKlinesRange(symbol, interval string, start, end time.Time) ([]Kline, error) {
