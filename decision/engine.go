@@ -230,11 +230,17 @@ func GetFullDecisionWithStrategy(ctx *Context, mcpClient mcp.AIClient, variant s
 		// Log market data for debugging
 		for symbol, data := range ctx.MarketDataMap {
 			if data != nil {
+				logger.Infof("📊 MarketDataMap[%s]: symbol=%s, current_price=%.2f, timeframe_data=%v", 
+					symbol, data.Symbol, data.CurrentPrice, data.TimeframeData != nil)
 				if data.TimeframeData != nil {
-					logger.Infof("📊 MarketDataMap[%s] has %d timeframes", symbol, len(data.TimeframeData))
+					logger.Infof("📊   TimeframeData has %d timeframes", len(data.TimeframeData))
 					for tf, tfData := range data.TimeframeData {
 						if tfData != nil {
 							logger.Infof("📊   - %s: %d klines", tf, len(tfData.Klines))
+							if len(tfData.Klines) > 0 {
+								logger.Infof("📊     First kline: time=%d, close=%.2f", 
+									tfData.Klines[0].Time, tfData.Klines[0].Close)
+							}
 						} else {
 							logger.Warnf("⚠️   - %s: tfData is nil", tf)
 						}
@@ -246,6 +252,27 @@ func GetFullDecisionWithStrategy(ctx *Context, mcpClient mcp.AIClient, variant s
 				logger.Warnf("⚠️  MarketDataMap[%s] is nil", symbol)
 			}
 		}
+		
+		// Serialize context to JSON for debugging
+		if jsonBytes, err := json.Marshal(ctx); err == nil {
+			logger.Debugf("📊 Context JSON size: %d bytes", len(jsonBytes))
+			// Check if TimeframeData is in JSON
+			var jsonMap map[string]interface{}
+			if err := json.Unmarshal(jsonBytes, &jsonMap); err == nil {
+				if marketDataMap, ok := jsonMap["market_data_map"].(map[string]interface{}); ok {
+					for symbol, data := range marketDataMap {
+						if dataMap, ok := data.(map[string]interface{}); ok {
+							if tfData, ok := dataMap["timeframe_data"]; ok {
+								logger.Infof("📊 JSON: %s has timeframe_data: %v", symbol, tfData != nil)
+							} else {
+								logger.Warnf("⚠️  JSON: %s missing timeframe_data", symbol)
+							}
+						}
+					}
+				}
+			}
+		}
+		
 		mcpClient = withMeta.WithMeta("context", ctx)
 	}
 

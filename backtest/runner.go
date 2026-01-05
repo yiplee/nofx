@@ -507,33 +507,43 @@ func (r *Runner) buildDecisionContext(ts int64, marketData map[string]*market.Da
 	// Quant client expects MarketDataMap[symbol].TimeframeData[timeframe] to contain all timeframes
 	mergedMarketData := make(map[string]*market.Data, len(marketData))
 	for symbol, primaryData := range marketData {
-		// Start with a copy of primary data
-		merged := *primaryData
+		// Start with a deep copy of primary data to preserve all fields
+		merged := market.Data{
+			Symbol:            primaryData.Symbol,
+			CurrentPrice:      primaryData.CurrentPrice,
+			PriceChange1h:     primaryData.PriceChange1h,
+			PriceChange4h:     primaryData.PriceChange4h,
+			CurrentEMA20:      primaryData.CurrentEMA20,
+			CurrentMACD:       primaryData.CurrentMACD,
+			CurrentRSI7:       primaryData.CurrentRSI7,
+			OpenInterest:      primaryData.OpenInterest,
+			FundingRate:       primaryData.FundingRate,
+			IntradaySeries:    primaryData.IntradaySeries,
+			LongerTermContext: primaryData.LongerTermContext,
+			TimeframeData:     make(map[string]*market.TimeframeSeriesData),
+		}
 
-		// Initialize TimeframeData if nil
-		if merged.TimeframeData == nil {
-			merged.TimeframeData = make(map[string]*market.TimeframeSeriesData)
+		// Copy TimeframeData from primary data if it exists
+		if primaryData.TimeframeData != nil {
+			for tfKey, tfSeriesData := range primaryData.TimeframeData {
+				if tfSeriesData != nil {
+					merged.TimeframeData[tfKey] = tfSeriesData
+				}
+			}
 		}
 
 		// Merge all timeframe data from multiTF
 		if symbolTFs, ok := multiTF[symbol]; ok {
 			for tf, tfData := range symbolTFs {
-				if tfData != nil {
-					// If tfData has TimeframeData, use it
-					if tfData.TimeframeData != nil {
-						for tfKey, tfSeriesData := range tfData.TimeframeData {
-							if tfSeriesData != nil {
-								merged.TimeframeData[tfKey] = tfSeriesData
-							}
+				if tfData != nil && tfData.TimeframeData != nil {
+					// Copy timeframe data from each timeframe's Data structure
+					for tfKey, tfSeriesData := range tfData.TimeframeData {
+						if tfSeriesData != nil {
+							merged.TimeframeData[tfKey] = tfSeriesData
 						}
-					} else {
-						// If TimeframeData is nil, create it from the klines in this Data structure
-						// This handles the case where BuildDataFromKlines didn't populate TimeframeData
-						// We need to extract klines from the Data structure and create TimeframeSeriesData
-						// But Data structure doesn't store raw klines, so we need to get them from multiTF
-						// Actually, we should ensure BuildDataFromKlines always populates TimeframeData
-						logger.Warnf("⚠️  TimeframeData is nil for %s %s, this should not happen", symbol, tf)
 					}
+				} else {
+					logger.Warnf("⚠️  TimeframeData is nil for %s %s", symbol, tf)
 				}
 			}
 		}
@@ -546,7 +556,8 @@ func (r *Runner) buildDecisionContext(ts int64, marketData map[string]*market.Da
 				}
 			}
 		} else {
-			logger.Warnf("⚠️  No TimeframeData merged for %s", symbol)
+			logger.Warnf("⚠️  No TimeframeData merged for %s (primaryData.TimeframeData=%v, multiTF=%v)",
+				symbol, primaryData.TimeframeData != nil, multiTF[symbol] != nil)
 		}
 
 		mergedMarketData[symbol] = &merged
