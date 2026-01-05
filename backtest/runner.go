@@ -502,6 +502,36 @@ func (r *Runner) buildDecisionContext(ts int64, marketData map[string]*market.Da
 	}
 
 	runtime := int((ts - int64(r.cfg.StartTS*1000)) / 60000)
+	
+	// Merge multiTF data into MarketDataMap for quant client compatibility
+	// Quant client expects MarketDataMap[symbol].TimeframeData[timeframe] to contain all timeframes
+	mergedMarketData := make(map[string]*market.Data, len(marketData))
+	for symbol, primaryData := range marketData {
+		// Start with a copy of primary data
+		merged := *primaryData
+		
+		// Initialize TimeframeData if nil
+		if merged.TimeframeData == nil {
+			merged.TimeframeData = make(map[string]*market.TimeframeSeriesData)
+		}
+		
+		// Merge all timeframe data from multiTF
+		if symbolTFs, ok := multiTF[symbol]; ok {
+			for _, tfData := range symbolTFs {
+				if tfData != nil && tfData.TimeframeData != nil {
+					// Copy timeframe data from each timeframe's Data structure
+					for tfKey, tfSeriesData := range tfData.TimeframeData {
+						if tfSeriesData != nil {
+							merged.TimeframeData[tfKey] = tfSeriesData
+						}
+					}
+				}
+			}
+		}
+		
+		mergedMarketData[symbol] = &merged
+	}
+	
 	ctx := &decision.Context{
 		CurrentTime:    time.UnixMilli(ts).UTC().Format("2006-01-02 15:04:05 UTC"),
 		RuntimeMinutes: runtime,
@@ -510,7 +540,7 @@ func (r *Runner) buildDecisionContext(ts int64, marketData map[string]*market.Da
 		Positions:      positions,
 		CandidateCoins: candidateCoins,
 		PromptVariant:  r.cfg.PromptVariant,
-		MarketDataMap:  marketData,
+		MarketDataMap:  mergedMarketData,
 		MultiTFMarket:  multiTF,
 		Timeframes:     r.cfg.Timeframes,
 		StrategyConfig: r.strategyEngine.GetConfig(),
